@@ -16,19 +16,19 @@ No pip dependencies or AutoIt installation are required. Keep `hub.py`, `app_mai
 Use the same checked characters for **Pause**, **Resume**, **Trade Mode**, **Open Lockboxes**, **Show**, or **Stop**.
 Trade and lockbox requests pause farming, wait for the current run to finish, then select that mode. Already active modes are not toggled off. Trade Mode honors the original bot's restrictions (including Guild Hall sell location). A new command replaces the previous queued request. Waiting commands time out after 30 minutes.
 
-Stop force-stops the selected bot processes, leaving Guild Wars open. Closing the hub leaves bots running but cancels commands still queued in the hub. Only bots launched in the current hub session are controlled; existing bot instances are not adopted. Close previous bot instances before launching those characters again. Use separate accounts for simultaneous game sessions.
+Stop force-stops the selected bot processes, leaving their Guild Wars clients tracked until hub exit. **Closing the hub terminates all bot and game processes owned by this hub session, then waits for them to exit.** Other Guild Wars clients are left alone. The GW PIDs column shows each bot’s currently owned `Gw.exe` processes, including relaunches. Each bot is launched suspended, assigned to a private Windows Job with kill-on-close, then resumed. Windows tracks its descendants without relying on process names, window titles, or parent PID polling. If ownership assignment fails, that bot is stopped before it can launch a game. Only bots launched in the current hub session are controlled; existing bot instances are not adopted. Close previous bot instances before launching those characters again. Use separate accounts for simultaneous game sessions.
 
 Selections and the bot path are saved in `%LOCALAPPDATA%\EncounterHub\settings.json`. Account passwords are neither read nor uploaded by the hub.
 
 ## Automatic updates
 
-At startup, `hub.py` checks `dasaright/EncounterHub` on GitHub's `main` branch and updates `app_main.py` before opening the GUI. **Check for Updates** also downloads new app code while the hub stays open; reopen the hub to use it. Your running bots are not stopped by updates. Settings and the original bot files are preserved.
+At startup, `hub.py` checks `dasaright/EncounterHub` on GitHub's `main` branch and updates `app_main.py` before opening the GUI. **Check for Updates** also downloads new app code while the hub stays open; reopen the hub to use it. Downloading an update does not stop running bots. Closing the hub to activate it also closes this hub’s bots and game clients. Settings and the original bot files are preserved.
 
-The updater retrieves the manifest and source from the same immutable commit, checks SHA-256, checks Python syntax, keeps `app_main.py.backup`, and atomically replaces the app file. If GitHub is offline or an update fails validation, it uses the installed app. Repository maintainers control the downloaded code; the updater uses no GitHub token. `hub.py` is a stable bootstrap and is not itself auto-updated; bootstrap changes require downloading the repository again.
+The updater retrieves the manifest and source from the same immutable commit, checks SHA-256, checks Python syntax, keeps `app_main.py.backup`, and atomically replaces the app file. If GitHub is offline or an update fails validation, it uses the installed app. Repository maintainers control the downloaded code; the updater uses no GitHub token. **Check for Updates updates the complete allowlisted bundle**, including `hub.py` and both launchers. All files are verified before any are installed, backups are kept, and failed installations roll back files already replaced. `update.json` remains compatible with older hubs, while `bundle.json` describes the complete update. An older hub upgrades its app with its existing Check for Updates button; after reopening, the new app automatically upgrades the updater and launcher files. No manual ZIP download is needed for this migration.
 
 ## Publishing changes
 
-Edit `app_main.py`, bump `VERSION`, and run `python tools/build_manifest.py` to refresh `update.json`. Commit the app and manifest together to `main`. Run `python -m unittest discover -s tests` before publishing. All installations check the updated manifest on their next launch.
+Edit `app_main.py`, bump `VERSION`, and run `python tools/build_manifest.py` to refresh `update.json` and `bundle.json`. Commit all changed code and manifests together to `main`. Run `python -m unittest discover -s tests` before publishing. All installations check the updated manifest on their next launch.
 
 ## Validation and limits
 
@@ -36,4 +36,4 @@ Unit tests cover command routing, update validation, offline/error behavior, and
 
 ## Switching from the previous launcher
 
-Download the updated repository ZIP once to get `Launch Hub.vbs`. Close the hub, replace the launcher files, then open `Launch Hub.vbs` from now on. Saved selections and the bot path remain intact. App auto-updates do not install new bootstrap/launcher files.
+Use **Check for Updates** in your existing hub, then close and reopen it. The upgraded app installs the full launcher bundle. Use `Launch Hub.vbs` afterward for console-free startup. Saved selections and the bot path remain intact. Bots created before this ownership upgrade cannot be adopted safely; close those old bot/game windows manually once before launching new instances through version 1.1.0.

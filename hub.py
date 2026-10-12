@@ -9,6 +9,7 @@ import subprocess
 import sys
 import urllib.request
 
+HUB_BUNDLE_SUPPORT = True
 REPOSITORY = 'dasaright/EncounterHub'
 ROOT = Path(__file__).resolve().parent
 
@@ -89,6 +90,11 @@ def main():
         if not (ROOT / 'app_main.py').exists():
             raise RuntimeError('No installed app_main.py. Download the complete repository ZIP.')
         import app_main
+        try:
+            bundle_status = app_main.update_bundle()
+            status = bundle_status
+        except Exception as exc:
+            status += '; launcher bundle check unavailable: ' + str(exc)
         app_main.run(status)
     except Exception as exc:
         ctypes.windll.user32.MessageBoxW(None, str(exc), 'Encounter Hub error', 16)

@@ -64,4 +64,64 @@ class Updates(unittest.TestCase):
             with self.assertRaises(OSError):hub.update(self.root)
         self.assertEqual((self.root/'app_main.py').read_bytes(),self.old)
 
+
+class Bundles(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name);self.addCleanup(self.temp.cleanup)
+        self.payloads={'app_main.py':b'VERSION="new"\n','hub.py':b'HUB_BUNDLE_SUPPORT=True\n','Launch Hub.vbs':b'Option Explicit\n','Launch Hub.cmd':b'@echo off\n','update.json':b'{}'}
+        self.manifest={'format':1,'version':'new','files':{n:hashlib.sha256(b).hexdigest() for n,b in self.payloads.items()}}
+        (self.root/'settings.json').write_text('KEEP')
+    def invoke(self):
+        import app_main
+        def remote(name,commit):
+            self.assertEqual(commit,'pinned')
+            return json.dumps(self.manifest).encode() if name=='bundle.json' else self.payloads[name]
+        with patch.object(hub,'api',return_value={'object':{'sha':'pinned'}}),patch.object(hub,'remote_file',side_effect=remote):
+            return app_main.update_bundle(self.root)
+    def test_full_install_preserves_settings(self):
+        self.invoke()
+        for name,data in self.payloads.items():self.assertEqual((self.root/name).read_bytes(),data)
+        self.assertEqual((self.root/'settings.json').read_text(),'KEEP')
+    def test_validate_all_before_install(self):
+        self.payloads['hub.py']=b'tampered'
+        with self.assertRaises(ValueError):self.invoke()
+        self.assertFalse((self.root/'app_main.py').exists())
+    def test_unknown_file_rejected(self):
+        self.manifest['files']['settings.json']='0'*64
+        with self.assertRaises(ValueError):self.invoke()
+        self.assertEqual((self.root/'settings.json').read_text(),'KEEP')
+    def test_install_failure_rolls_back(self):
+        (self.root/'app_main.py').write_bytes(b'OLD')
+        import app_main
+        real_replace=app_main.os.replace
+        def replace(src,dst):
+            if Path(dst).name=='hub.py':raise OSError('simulated install failure')
+            return real_replace(src,dst)
+        with patch.object(app_main.os,'replace',side_effect=replace):
+            with self.assertRaises(OSError):self.invoke()
+        self.assertEqual((self.root/'app_main.py').read_bytes(),b'OLD')
+
+@unittest.skipUnless(sys.platform=='win32','Windows kernel integration test')
+class Ownership(unittest.TestCase):
+    def test_private_job_kills_descendants_and_keeps_unrelated_process(self):
+        import subprocess
+        import time
+        from app_main import JobProcess
+        unrelated=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)'])
+        owned=None
+        try:
+            owned=JobProcess(Path(sys.executable),['-c','import subprocess,sys,time; subprocess.Popen([sys.executable,"-c","import time; time.sleep(60)"]);time.sleep(60)'])
+            deadline=time.monotonic()+10
+            while len(owned.members())<2 and time.monotonic()<deadline:time.sleep(.1)
+            self.assertGreaterEqual(len(owned.members()),2)
+            self.assertNotIn(unrelated.pid,owned.members())
+            owned.shutdown()
+            deadline=time.monotonic()+10
+            while owned.members() and time.monotonic()<deadline:time.sleep(.1)
+            self.assertEqual(owned.members(),[])
+            self.assertIsNone(unrelated.poll())
+        finally:
+            if owned:owned.close()
+            unrelated.terminate();unrelated.wait(timeout=10)
+
 if __name__=='__main__':unittest.main()
