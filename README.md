@@ -41,3 +41,7 @@ Use **Check for Updates** in your existing hub, then close and reopen it. The up
 ## Responsiveness
 
 Bot monitoring and cross-process control reads run in a background worker. The GUI only consumes status events. Bot windows and relevant controls are cached; running bots without pending commands do not require button reads. Owned game PID scans run every two seconds. Stop and shutdown wait asynchronously so the hub remains responsive.
+
+## Per-character controls
+
+Rows show Select, Character, Bot Status, Command, Disable Rendering, Always on Top, Pause, Resume, Stop, and Launch. Checkbox states synchronize from the corresponding bot approximately once a second. Clicking a hub checkbox requests the same state in that bot; disabled or unresponsive bot controls remain unavailable in the hub. Direct changes in the bot also appear in the hub. Each row action affects only that character without changing bulk selections. Game PID tracking continues internally.

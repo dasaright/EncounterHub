@@ -12,7 +12,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-VERSION = '1.1.1'
+VERSION = '1.2.0'
 
 
 def command_action(command, buttons):
@@ -223,6 +223,11 @@ class Native:
                                        ctypes.addressof(buffer), 2, 100, ctypes.byref(result))
         return buffer.value if ok and result.value != ctypes.c_size_t(-1).value else ''
 
+    def checked(self, handle):
+        result=ctypes.c_size_t()
+        ok=self.u.SendMessageTimeoutW(handle,0xF0,0,0,2,30,ctypes.byref(result))
+        return bool(result.value==1) if ok else None
+
     def kind(self, handle):
         buffer = ctypes.create_unicode_buffer(256)
         self.u.GetClassNameW(handle, buffer, 256)
@@ -268,7 +273,7 @@ class Hub:
             self.settings = {}
         self.checked = set(self.settings.get('selected', []))
         self.exe = Path(self.settings.get('bot_path', str(Path(__file__).parent / 'Encounter_ReBuilt.exe')))
-        self.root.title('Encounter Hub ' + VERSION); self.root.geometry('1020x560')
+        self.root.title('Encounter Hub ' + VERSION); self.root.geometry('1400x600')
         self.root.minsize(850, 480); self.closing=False
         self.path_label = ttk.Label(root, text=str(self.exe)); self.path_label.pack(anchor='w', padx=12, pady=8)
         top = ttk.Frame(root); top.pack(fill='x', padx=12)
@@ -276,11 +281,21 @@ class Hub:
         ttk.Button(top, text='Select All', command=lambda: self.select_all(True)).pack(side='left', padx=5)
         ttk.Button(top, text='Clear Selection', command=lambda: self.select_all(False)).pack(side='left')
         ttk.Label(root, text='Click the checkbox column to select characters.').pack(anchor='w', padx=12, pady=6)
-        self.tree = ttk.Treeview(root, columns=('check', 'character', 'status', 'pid', 'games', 'command'), show='headings', selectmode='none')
-        for key, caption, width in [('check','Select',60),('character','Character',230),('status','Bot status',230),('pid','Bot PID',70),('games','GW PIDs',110),('command','Command',300)]:
-            self.tree.heading(key, text=caption); self.tree.column(key, width=width, stretch=key!='check')
-        self.tree.pack(fill='both', expand=True, padx=12)
-        self.tree.bind('<Button-1>', self.toggle)
+        ttk.Style(root).configure('Treeview',rowheight=30)
+        self.row_widgets={}
+        columns=('check','character','status','command','render','ontop','pause','resume','stop','launch','pid','games')
+        visible=columns[:-2]
+        self.tree = ttk.Treeview(root,columns=columns,displaycolumns=visible,show='headings',selectmode='none')
+        specs=[('check','Select',55),('character','Character',205),('status','Bot Status',215),('command','Command',235),
+               ('render','Disable Rendering',130),('ontop','Always on Top',110),('pause','Pause',75),('resume','Resume',75),('stop','Stop',75),('launch','Launch',75)]
+        for key,caption,width in specs:
+            self.tree.heading(key,text=caption);self.tree.column(key,width=width,minwidth=width,stretch=key in ('character','status','command'))
+        self.tree.pack(fill='both',expand=True,padx=12)
+        self.tree.bind('<Button-1>',self.toggle)
+        self.tree.bind('<Configure>',lambda event:self.root.after_idle(self.layout_rows))
+        scroll=ttk.Scrollbar(root,orient='horizontal',command=lambda *args:self.scroll_rows(*args))
+        self.tree.configure(xscrollcommand=scroll.set);scroll.pack(fill='x',padx=12)
+        self.tree.bind('<MouseWheel>',lambda event:self.root.after_idle(self.layout_rows),add='+')
         actions = ttk.Frame(root); actions.pack(fill='x', padx=12, pady=10)
         for caption, action in [('Launch Selected',self.launch),('Show Selected',self.show),('Stop Selected Bots',self.stop)]:
             ttk.Button(actions, text=caption, command=action).pack(side='left', padx=3)
@@ -318,8 +333,43 @@ class Hub:
             text=raw.decode('utf-16') if raw.startswith((b'\xff\xfe',b'\xfe\xff')) else raw.decode('utf-8-sig',errors='replace')
             names=sorted(set(re.findall(r'^\s*\[([^\]\r\n]+)\]\s*$',text,re.M)))
         except OSError as exc: messagebox.showerror('Character configuration',str(exc)); return
+        for widgets in self.row_widgets.values():
+            for widget in widgets['widgets'].values():widget.destroy()
+        self.row_widgets.clear()
         self.tree.delete(*self.tree.get_children())
-        for name in names: self.tree.insert('', 'end', iid=name, values=('☑' if name in self.checked else '☐',name,'Ready','','',''))
+        for name in names: self.tree.insert('', 'end', iid=name, values=('☑' if name in self.checked else '☐',name,'Ready','','','','','','','','',''))
+        for name in names:self.make_row_controls(name)
+        self.root.after_idle(self.layout_rows)
+
+    def make_row_controls(self,name):
+        variables={key:tk.BooleanVar(value=False) for key in ('render','ontop')}
+        widgets={}
+        for key in variables:
+            widgets[key]=ttk.Checkbutton(self.tree,variable=variables[key],command=lambda k=key,n=name:self.option(n,k))
+            widgets[key].configure(state='disabled')
+        for key in ('pause','resume','stop','launch'):
+            callback=(lambda n=name:self.launch([n])) if key=='launch' else ((lambda n=name:self.stop([n])) if key=='stop' else (lambda n=name,c=key.title():self.command(c,[n])))
+            widgets[key]=ttk.Button(self.tree,text=key.title(),command=callback)
+        self.row_widgets[name]={'variables':variables,'widgets':widgets}
+
+    def layout_rows(self):
+        if self.closing:return
+        for name,row in self.row_widgets.items():
+            for column,widget in row['widgets'].items():
+                box=self.tree.bbox(name,column)
+                if box:
+                    x,y,width,height=box;widget.place(x=x+2,y=y+1,width=width-4,height=height-2)
+                else:widget.place_forget()
+
+    def scroll_rows(self,*args):
+        self.tree.xview(*args);self.layout_rows()
+
+    def option(self,name,key):
+        s=self.sessions.get(name)
+        if not s or s['stopping'] or s['process'].poll() is not None:return
+        desired=self.row_widgets[name]['variables'][key].get()
+        self.row_widgets[name]['widgets'][key].configure(state='disabled')
+        self.requests.put(('option',name,s,(key,desired)))
 
     def toggle(self,event):
         name=self.tree.identify_row(event.y)
@@ -335,8 +385,8 @@ class Hub:
 
     def selected(self):return [n for n in self.tree.get_children() if n in self.checked]
 
-    def launch(self):
-        for name in self.selected():
+    def launch(self,names=None):
+        for name in self.selected() if names is None else names:
             if name in self.sessions and (self.sessions[name]['stopping'] or self.sessions[name]['process'].poll() is None):continue
             try:
                 old=self.sessions.get(name)
@@ -345,7 +395,7 @@ class Hub:
                         self.tree.set(name,'command','Owned clients still open; close hub before relaunch');continue
                     self.retired.append(old['process'])
                 p=JobProcess(self.exe)
-                self.sessions[name]=dict(process=p,phase='select',deadline=time.monotonic()+90,pending=None,command_deadline=0,sent_at=0,window=None,controls=None,next_games=0,stopping=False,stop_phase=None)
+                self.sessions[name]=dict(process=p,phase='select',deadline=time.monotonic()+90,pending=None,command_deadline=0,sent_at=0,window=None,controls=None,next_games=0,stopping=False,stop_phase=None,options={},option_requests={},next_options=0)
                 self.tree.set(name,'status','Opening bot...');self.tree.set(name,'pid',p.pid);self.tree.set(name,'command','');self.tree.set(name,'games','')
             except OSError as exc:self.tree.set(name,'status',str(exc))
 
@@ -356,17 +406,17 @@ class Hub:
                 h=s.get('window') or self.native.window(s['process'].pid)
                 if h:self.native.u.ShowWindow(h,9);self.native.u.SetForegroundWindow(h)
 
-    def stop(self):
+    def stop(self,names=None):
         if not messagebox.askyesno('Stop bots and clients','Stop selected bots, then close only their owned Guild Wars clients?'):return
-        for name in self.selected():
+        for name in self.selected() if names is None else names:
             s=self.sessions.get(name)
             if not s:continue
             s['stopping']=True
             self.requests.put(('stop',name,s,None))
             self.tree.set(name,'status','Stopping bot first...')
 
-    def command(self,command):
-        for name in self.selected():
+    def command(self,command,names=None):
+        for name in self.selected() if names is None else names:
             s=self.sessions.get(name)
             if not s or s['process'].poll() is not None:self.tree.set(name,'command','No running bot in this hub');continue
             if s['stopping']:self.tree.set(name,'command','Stop in progress');continue
@@ -388,6 +438,9 @@ class Hub:
                         s.update(pending=None,stopping=True,stop_phase='bot')
                         try:s['process'].terminate()
                         except OSError as exc:self.report(name,'command','Stop failed: '+str(exc))
+                    elif action=='option' and not s['stopping']:
+                        key,desired=command;s.setdefault('option_sent',set()).discard(key);s['option_requests'][key]=(desired,time.monotonic()+10)
+                        s['next_options']=0
                     elif not s['stopping']:
                         s.update(pending=command,command_deadline=time.monotonic()+1800,sent_at=0)
             except queue.Empty:pass
@@ -397,8 +450,31 @@ class Hub:
                 except Exception as exc:self.report(name,'status','Needs attention: '+str(exc))
             self.monitor_stop.wait(.5)
 
+    def sync_options(self,name,s):
+        if time.monotonic()<s.get('next_options',0):return
+        s['next_options']=time.monotonic()+1
+        for key,handle in s.get('options',{}).items():
+            actual=self.native.checked(handle)
+            enabled=bool(self.native.u.IsWindowEnabled(handle))
+            request=s.get('option_requests',{}).get(key)
+            if request:
+                desired,deadline=request
+                if actual is not None and actual==desired:
+                    del s['option_requests'][key]
+                elif time.monotonic()>deadline or not enabled:
+                    del s['option_requests'][key];self.report(name,'command',('Disable Rendering' if key=='render' else 'Always on Top')+' unavailable or timed out')
+                elif actual is not None and key not in s.get('option_sent',set()) and self.native.click(handle):
+                    # Post one normal click so the bot's AutoIt handler applies effects.
+                    s['option_requests'][key]=(desired,deadline)
+                    s['next_options']=time.monotonic()+1
+                    # Do not click again until a new user request.
+                    s.setdefault('option_sent',set()).add(key)
+            if actual is not None:self.report(name,key,'1' if actual else '0')
+            self.report(name,'_'+key+'_enabled',enabled and actual is not None and key not in s.get('option_requests',{}))
+
     def step(self,name,s):
         if s['stopping']:
+            for key in ('render','ontop'):self.report(name,'_'+key+'_enabled',False)
             status,finished=advance_stop(s)
             self.report(name,'status',status)
             if finished:self.report(name,'games','—');self.report(name,'command','Bot and owned clients stopped')
@@ -407,10 +483,13 @@ class Hub:
             self.report(name,'games',', '.join(map(str,s['process'].games())) or '—')
             s['next_games']=time.monotonic()+2
         if s['process'].poll() is not None:
+            for key in ('render','ontop'):
+                self.report(name,key,'0');self.report(name,'_'+key+'_enabled',False)
             self.report(name,'status','Exited')
             if s['pending']:self.report(name,'command','Bot exited; command cancelled');s['pending']=None
             return
         # A running bot with no command needs only a cheap process liveness check.
+        if s['phase']=='done':self.sync_options(name,s)
         if s['phase']=='done' and not s['pending']:return
         h=s.get('window')
         if not h or not self.native.u.IsWindow(h):
@@ -424,12 +503,18 @@ class Hub:
             captions={'Start','Starting bot...','Pause','Resume','Waiting for pause...',
                       'Waiting to resume...','Waiting for restart...','Open Lockboxes',
                       'Stop Opening','Trade Mode','Stop Trade Mode'}
+            s['options']={}
+            for c in all_children:
+                if self.native.kind(c)=='Button':
+                    caption=self.native.text(c)
+                    if caption=='Disable Rendering':s['options']['render']=c
+                    elif caption=='Always On Top':s['options']['ontop']=c
             s['controls']=[c for c in all_children if self.native.kind(c)=='ComboBox' or
                            (self.native.kind(c)=='Button' and self.native.text(c) in captions)]
         children=s['controls']
         buttons={self.native.text(c):c for c in children if self.native.kind(c)=='Button'}
         if self.native.title(h)=='Encounter Re:Built - '+name:
-            s['phase']='done';self.report(name,'status','Started (window confirmed)')
+            s['phase']='done';self.report(name,'status','Started (window confirmed)');self.sync_options(name,s)
         if s['phase']!='done':
             if time.monotonic()>s['deadline']:self.report(name,'status','Needs attention; open bot');return
             if s['phase']=='select':
@@ -464,11 +549,18 @@ class Hub:
         try:
             while True:
                 name,column,value=self.monitor_events.get_nowait()
-                if self.tree.exists(name) and self.tree.set(name,column)!=str(value):self.tree.set(name,column,value)
+                if not self.tree.exists(name):continue
+                row=self.row_widgets.get(name)
+                if column in ('render','ontop') and row:
+                    row['variables'][column].set(value=='1')
+                elif column in ('_render_enabled','_ontop_enabled') and row:
+                    key=column[1:-8];row['widgets'][key].configure(state='normal' if value else 'disabled')
+                elif self.tree.set(name,column)!=str(value):self.tree.set(name,column,value)
         except queue.Empty:pass
         try:
             while True:self.notice.set(self.events.get_nowait());self.busy_update=False
         except queue.Empty:pass
+        self.layout_rows()
         self.root.after(100,self.tick)
 
     def check_update(self):

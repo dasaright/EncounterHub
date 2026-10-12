@@ -164,4 +164,61 @@ class StopAndMonitoring(unittest.TestCase):
         h.report('character','status','running')
         self.assertEqual(h.monitor_events.get_nowait(),('character','status','running'))
 
+
+
+class CheckboxSync(unittest.TestCase):
+    def setup_hub(self):
+        from app_main import Hub
+        from unittest.mock import Mock
+        h=Hub.__new__(Hub);h.native=Mock();h.report=Mock();h.native.u.IsWindowEnabled.return_value=True
+        session={'next_options':0,'options':{'render':10},'option_requests':{},'option_sent':set()}
+        return h,session
+    def test_external_change_is_reflected_without_click(self):
+        h,s=self.setup_hub();h.native.checked.return_value=True
+        h.sync_options('char',s)
+        h.report.assert_any_call('char','render','1');h.native.click.assert_not_called()
+    def test_desired_state_clicks_once_and_waits_for_confirmation(self):
+        import time
+        h,s=self.setup_hub();h.native.checked.return_value=False
+        s['option_requests']['render']=(True,time.monotonic()+10)
+        h.sync_options('char',s);s['next_options']=0;h.sync_options('char',s)
+        h.native.click.assert_called_once_with(10)
+        h.native.checked.return_value=True;s['next_options']=0;h.sync_options('char',s)
+        self.assertNotIn('render',s['option_requests'])
+        h.report.assert_any_call('char','_render_enabled',True)
+    def test_matching_state_is_not_toggled_off(self):
+        import time
+        h,s=self.setup_hub();h.native.checked.return_value=True
+        s['option_requests']['render']=(True,time.monotonic()+10)
+        h.sync_options('char',s);h.native.click.assert_not_called()
+
+@unittest.skipUnless(sys.platform=='win32','Windows Tk row control test')
+class RowControls(unittest.TestCase):
+    def test_columns_and_row_buttons_do_not_change_selection(self):
+        import os
+        import tkinter as tk
+        from app_main import Hub
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as directory:
+            folder=Path(directory);(folder/'Config').mkdir()
+            (folder/'Config'/'characters.ini').write_text('[Character One]\n')
+            exe=folder/'Encounter_ReBuilt.exe';exe.touch()
+            settings=folder/'EncounterHub';settings.mkdir();(settings/'settings.json').write_text(json.dumps({'bot_path':str(exe),'selected':[]}))
+            root=tk.Tk()
+            with patch.dict(os.environ,{'LOCALAPPDATA':directory}):
+                h=Hub(root,'test')
+            try:
+                root.update()
+                self.assertEqual(tuple(h.tree['displaycolumns']),('check','character','status','command','render','ontop','pause','resume','stop','launch'))
+                h.command=Mock();h.launch=Mock();h.stop=Mock()
+                h.row_widgets['Character One']['widgets']['pause'].invoke()
+                h.command.assert_called_once_with('Pause',['Character One'])
+                h.row_widgets['Character One']['widgets']['launch'].invoke()
+                h.launch.assert_called_once_with(['Character One'])
+                h.row_widgets['Character One']['widgets']['stop'].invoke()
+                h.stop.assert_called_once_with(['Character One'])
+                self.assertEqual(h.checked,set())
+            finally:
+                h.monitor_stop.set();h.monitor_worker.join(timeout=5);root.destroy()
+
 if __name__=='__main__':unittest.main()
