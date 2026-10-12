@@ -115,7 +115,13 @@ class Ownership(unittest.TestCase):
             while len(owned.members())<2 and time.monotonic()<deadline:time.sleep(.1)
             self.assertGreaterEqual(len(owned.members()),2)
             self.assertNotIn(unrelated.pid,owned.members())
-            owned.shutdown()
+            from app_main import advance_stop
+            owned.terminate()
+            session={'process':owned,'stop_phase':'bot','stopping':True}
+            deadline=time.monotonic()+10
+            while owned.poll() is None and time.monotonic()<deadline:time.sleep(.1)
+            self.assertIsNotNone(owned.poll())
+            advance_stop(session)
             deadline=time.monotonic()+10
             while owned.members() and time.monotonic()<deadline:time.sleep(.1)
             self.assertEqual(owned.members(),[])
@@ -123,5 +129,39 @@ class Ownership(unittest.TestCase):
         finally:
             if owned:owned.close()
             unrelated.terminate();unrelated.wait(timeout=10)
+
+
+class StopAndMonitoring(unittest.TestCase):
+    def test_clients_wait_until_bot_exit(self):
+        from app_main import advance_stop
+        from unittest.mock import Mock
+        process=Mock();process.poll.return_value=None
+        session={'process':process,'stop_phase':'bot','stopping':True,'pending':'Pause'}
+        self.assertFalse(advance_stop(session)[1]);process.shutdown.assert_not_called()
+        process.poll.return_value=0;process.members.return_value=[234]
+        self.assertFalse(advance_stop(session)[1]);process.shutdown.assert_called_once()
+        process.members.return_value=[]
+        self.assertTrue(advance_stop(session)[1]);process.shutdown.assert_called_once()
+        self.assertFalse(session['stopping']);self.assertIsNone(session['pending'])
+    def test_unselected_jobs_are_not_touched(self):
+        from app_main import advance_stop
+        from unittest.mock import Mock
+        selected=Mock();unrelated=Mock();selected.poll.return_value=0;selected.members.return_value=[]
+        advance_stop({'process':selected,'stop_phase':'bot','stopping':True})
+        selected.shutdown.assert_called_once();unrelated.shutdown.assert_not_called()
+    def test_idle_running_monitor_does_not_read_bot_windows(self):
+        from app_main import Hub
+        from unittest.mock import Mock
+        h=Hub.__new__(Hub);h.native=Mock();h.report=Mock()
+        process=Mock();process.poll.return_value=None
+        session={'process':process,'stopping':False,'next_games':float('inf'),'phase':'done','pending':None}
+        h.step('character',session)
+        h.native.window.assert_not_called();h.native.children.assert_not_called();h.native.text.assert_not_called()
+    def test_worker_reports_without_touching_tk(self):
+        from app_main import Hub
+        import queue
+        h=Hub.__new__(Hub);h.monitor_events=queue.Queue()
+        h.report('character','status','running')
+        self.assertEqual(h.monitor_events.get_nowait(),('character','status','running'))
 
 if __name__=='__main__':unittest.main()

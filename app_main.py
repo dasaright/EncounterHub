@@ -12,7 +12,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-VERSION = '1.1.0'
+VERSION = '1.1.1'
 
 
 def command_action(command, buttons):
@@ -76,6 +76,20 @@ def update_bundle(root=None):
                 temporary=root/(name+'.rollback');temporary.write_bytes(previous[name]);os.replace(temporary,root/name)
         raise
     return 'Updated complete launcher to ' + manifest['version']
+
+
+def advance_stop(session):
+    """Close owned descendants only after the actual bot handle signals exit."""
+    process=session['process']
+    if process.poll() is None:
+        return 'Waiting for bot executable to exit...',False
+    if session['stop_phase']!='clients':
+        process.shutdown()
+        session['stop_phase']='clients'
+    if process.members():
+        return 'Bot exited; closing owned game clients...',False
+    session.update(stopping=False,phase='stopped',pending=None)
+    return 'Stopped (bot and owned clients)',True
 
 
 class JobProcess:
@@ -190,6 +204,8 @@ class Native:
             'EnumWindows': ([self.callback, W.LPARAM], W.BOOL),
             'EnumChildWindows': ([W.HWND, self.callback, W.LPARAM], W.BOOL),
             'GetWindowThreadProcessId': ([W.HWND, ctypes.POINTER(W.DWORD)], W.DWORD),
+            'IsWindow': ([W.HWND], W.BOOL),
+            'GetWindowTextW': ([W.HWND, W.LPWSTR, ctypes.c_int], ctypes.c_int),
             'GetClassNameW': ([W.HWND, W.LPWSTR, ctypes.c_int], ctypes.c_int),
             'SendMessageTimeoutW': ([W.HWND, W.UINT, W.WPARAM, W.LPARAM, W.UINT, W.UINT, ctypes.POINTER(ctypes.c_size_t)], W.LPARAM),
             'PostMessageW': ([W.HWND, W.UINT, W.WPARAM, W.LPARAM], W.BOOL),
@@ -218,12 +234,17 @@ class Native:
         self.u.EnumChildWindows(handle, callback, 0)
         return result
 
+    def title(self, handle):
+        buffer=ctypes.create_unicode_buffer(1024)
+        self.u.GetWindowTextW(handle,buffer,len(buffer))
+        return buffer.value
+
     def window(self, pid):
         result = []
         def visit(handle, _):
             process = W.DWORD()
             self.u.GetWindowThreadProcessId(handle, ctypes.byref(process))
-            if process.value == pid and self.text(handle).startswith('Encounter Re:Built'):
+            if process.value == pid and self.title(handle).startswith('Encounter Re:Built'):
                 result.append(handle)
                 return False
             return True
@@ -237,7 +258,7 @@ class Native:
 
 class Hub:
     def __init__(self, root, update_status):
-        self.root = root; self.native = Native(); self.sessions = {}; self.checked = set()
+        self.root = root; self.native = Native(); self.sessions = {}; self.retired=[]; self.checked = set()
         self.data = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'EncounterHub'
         self.data.mkdir(parents=True, exist_ok=True)
         self.settings_path = self.data / 'settings.json'
@@ -270,10 +291,13 @@ class Hub:
         self.notice = tk.StringVar(value=update_status)
         ttk.Label(root,textvariable=self.notice,wraplength=950).pack(fill='x',padx=12,pady=10)
         self.events = queue.Queue(); self.busy_update=False
+        self.monitor_events=queue.Queue();self.requests=queue.Queue();self.monitor_stop=threading.Event()
         self.root.protocol('WM_DELETE_WINDOW',self.close)
         if not self.exe.is_file(): self.choose()
         else: self.load_names()
-        self.root.after(500,self.tick)
+        self.monitor_worker=threading.Thread(target=self.monitor,daemon=True)
+        self.monitor_worker.start()
+        self.root.after(100,self.tick)
         import hub
         if not getattr(hub,'HUB_BUNDLE_SUPPORT',False): self.root.after(1000,self.check_update)
 
@@ -285,7 +309,7 @@ class Hub:
         if any(s['process'].members() for s in self.sessions.values()):
             messagebox.showinfo('Bot folder','Stop this hub’s bot instances before changing the bot folder.'); return
         path=filedialog.askopenfilename(title='Select Encounter_ReBuilt.exe',filetypes=[('Encounter bot','Encounter_ReBuilt.exe')])
-        if path: self.exe=Path(path); self.path_label.config(text=path); [s['process'].close() for s in self.sessions.values()]; self.sessions.clear(); self.load_names(); self.save()
+        if path: self.exe=Path(path); self.path_label.config(text=path); self.retired.extend(s['process'] for s in self.sessions.values()); self.sessions.clear(); self.load_names(); self.save()
 
     def load_names(self):
         ini=self.exe.parent/'Config'/'characters.ini'
@@ -313,15 +337,15 @@ class Hub:
 
     def launch(self):
         for name in self.selected():
-            if name in self.sessions and self.sessions[name]['process'].poll() is None:continue
+            if name in self.sessions and (self.sessions[name]['stopping'] or self.sessions[name]['process'].poll() is None):continue
             try:
                 old=self.sessions.get(name)
                 if old:
                     if old['process'].members():
                         self.tree.set(name,'command','Owned clients still open; close hub before relaunch');continue
-                    old['process'].close()
+                    self.retired.append(old['process'])
                 p=JobProcess(self.exe)
-                self.sessions[name]=dict(process=p,phase='select',deadline=time.monotonic()+90,pending=None,command_deadline=0,sent_at=0)
+                self.sessions[name]=dict(process=p,phase='select',deadline=time.monotonic()+90,pending=None,command_deadline=0,sent_at=0,window=None,controls=None,next_games=0,stopping=False,stop_phase=None)
                 self.tree.set(name,'status','Opening bot...');self.tree.set(name,'pid',p.pid);self.tree.set(name,'command','');self.tree.set(name,'games','')
             except OSError as exc:self.tree.set(name,'status',str(exc))
 
@@ -329,41 +353,85 @@ class Hub:
         for name in self.selected():
             s=self.sessions.get(name)
             if s and s['process'].poll() is None:
-                h=self.native.window(s['process'].pid)
+                h=s.get('window') or self.native.window(s['process'].pid)
                 if h:self.native.u.ShowWindow(h,9);self.native.u.SetForegroundWindow(h)
 
     def stop(self):
-        if not messagebox.askyesno('Stop bots','Force-stop selected bots launched by this hub? Guild Wars stays open.'):return
+        if not messagebox.askyesno('Stop bots and clients','Stop selected bots, then close only their owned Guild Wars clients?'):return
         for name in self.selected():
             s=self.sessions.get(name)
-            if s and s['process'].poll() is None:
-                try:s['process'].terminate();s['pending']=None
-                except OSError as exc:self.tree.set(name,'command',str(exc))
+            if not s:continue
+            s['stopping']=True
+            self.requests.put(('stop',name,s,None))
+            self.tree.set(name,'status','Stopping bot first...')
 
     def command(self,command):
         for name in self.selected():
             s=self.sessions.get(name)
             if not s or s['process'].poll() is not None:self.tree.set(name,'command','No running bot in this hub');continue
+            if s['stopping']:self.tree.set(name,'command','Stop in progress');continue
             if s['phase']!='done':self.tree.set(name,'command','Wait for startup to finish');continue
-            s.update(pending=command,command_deadline=time.monotonic()+1800,sent_at=0)
+            self.requests.put(('command',name,s,command))
             self.tree.set(name,'command',command+' queued')
 
+    def report(self,name,column,value):
+        # Worker threads never touch Tk widgets.
+        self.monitor_events.put((name,column,value))
+
+    def monitor(self):
+        while not self.monitor_stop.is_set():
+            try:
+                while True:
+                    action,name,s,command=self.requests.get_nowait()
+                    if self.sessions.get(name) is not s:continue
+                    if action=='stop':
+                        s.update(pending=None,stopping=True,stop_phase='bot')
+                        try:s['process'].terminate()
+                        except OSError as exc:self.report(name,'command','Stop failed: '+str(exc))
+                    elif not s['stopping']:
+                        s.update(pending=command,command_deadline=time.monotonic()+1800,sent_at=0)
+            except queue.Empty:pass
+            for name,s in list(self.sessions.items()):
+                if self.monitor_stop.is_set():break
+                try:self.step(name,s)
+                except Exception as exc:self.report(name,'status','Needs attention: '+str(exc))
+            self.monitor_stop.wait(.5)
+
     def step(self,name,s):
-        self.tree.set(name,'games',', '.join(map(str,s['process'].games())) or '—')
+        if s['stopping']:
+            status,finished=advance_stop(s)
+            self.report(name,'status',status)
+            if finished:self.report(name,'games','—');self.report(name,'command','Bot and owned clients stopped')
+            return
+        if time.monotonic()>=s['next_games']:
+            self.report(name,'games',', '.join(map(str,s['process'].games())) or '—')
+            s['next_games']=time.monotonic()+2
         if s['process'].poll() is not None:
-            self.tree.set(name,'status','Exited')
-            if s['pending']:self.tree.set(name,'command','Bot exited; command cancelled');s['pending']=None
+            self.report(name,'status','Exited')
+            if s['pending']:self.report(name,'command','Bot exited; command cancelled');s['pending']=None
             return
-        h=self.native.window(s['process'].pid)
+        # A running bot with no command needs only a cheap process liveness check.
+        if s['phase']=='done' and not s['pending']:return
+        h=s.get('window')
+        if not h or not self.native.u.IsWindow(h):
+            h=self.native.window(s['process'].pid);s['window']=h;s['controls']=None
         if not h:
-            if time.monotonic()>s['deadline']:self.tree.set(name,'status','No bot window; inspect manually')
+            if time.monotonic()>s['deadline']:self.report(name,'status','No bot window; inspect manually')
             return
-        children=self.native.children(h)
+        if s['controls'] is None:
+            all_children=self.native.children(h)
+            # Cache only the three command buttons and combo boxes.
+            captions={'Start','Starting bot...','Pause','Resume','Waiting for pause...',
+                      'Waiting to resume...','Waiting for restart...','Open Lockboxes',
+                      'Stop Opening','Trade Mode','Stop Trade Mode'}
+            s['controls']=[c for c in all_children if self.native.kind(c)=='ComboBox' or
+                           (self.native.kind(c)=='Button' and self.native.text(c) in captions)]
+        children=s['controls']
         buttons={self.native.text(c):c for c in children if self.native.kind(c)=='Button'}
-        if self.native.text(h)=='Encounter Re:Built - '+name:
-            s['phase']='done';self.tree.set(name,'status','Started (window confirmed)')
+        if self.native.title(h)=='Encounter Re:Built - '+name:
+            s['phase']='done';self.report(name,'status','Started (window confirmed)')
         if s['phase']!='done':
-            if time.monotonic()>s['deadline']:self.tree.set(name,'status','Needs attention; open bot');return
+            if time.monotonic()>s['deadline']:self.report(name,'status','Needs attention; open bot');return
             if s['phase']=='select':
                 for c in children:
                     if self.native.kind(c)!='ComboBox':continue
@@ -376,30 +444,32 @@ class Hub:
             elif s['phase']=='start':
                 selected=any(self.native.kind(c)=='ComboBox' and re.sub(r'^\s*\d+\s*-\s*','',self.native.text(c))==name for c in children)
                 if selected and self.native.click(buttons.get('Start')):
-                    s.update(phase='wait',deadline=time.monotonic()+300);self.tree.set(name,'status','Start requested; waiting for game')
+                    s.update(phase='wait',deadline=time.monotonic()+300);self.report(name,'status','Start requested; waiting for game')
             return
         command=s['pending']
         if not command:return
-        if time.monotonic()>s['command_deadline']:self.tree.set(name,'command','Command timed out');s['pending']=None;return
+        if time.monotonic()>s['command_deadline']:self.report(name,'command','Command timed out');s['pending']=None;return
         if time.monotonic()-s['sent_at']<2:return
         target,status,done=command_action(command,buttons)
-        self.tree.set(name,'command',status)
+        self.report(name,'command',status)
         if done:s['pending']=None;return
         if target and target in buttons:
             if self.native.click(buttons[target]):
-                s['sent_at']=time.monotonic();self.tree.set(name,'command',target+' sent')
+                s['sent_at']=time.monotonic();self.report(name,'command',target+' sent')
                 if target!='Pause':s['pending']=None
-            elif target!='Pause':self.tree.set(name,'command',target+' unavailable in bot');s['pending']=None
+            elif target!='Pause':self.report(name,'command',target+' unavailable in bot');s['pending']=None
 
     def tick(self):
         if self.closing:return
-        for name,s in list(self.sessions.items()):
-            try:self.step(name,s)
-            except Exception as exc:self.tree.set(name,'status','Needs attention: '+str(exc))
+        try:
+            while True:
+                name,column,value=self.monitor_events.get_nowait()
+                if self.tree.exists(name) and self.tree.set(name,column)!=str(value):self.tree.set(name,column,value)
+        except queue.Empty:pass
         try:
             while True:self.notice.set(self.events.get_nowait());self.busy_update=False
         except queue.Empty:pass
-        self.root.after(500,self.tick)
+        self.root.after(100,self.tick)
 
     def check_update(self):
         if self.busy_update:return
@@ -415,6 +485,7 @@ class Hub:
     def close(self):
         if self.closing:return
         self.closing=True
+        self.monitor_stop.set()
         def disable(widget):
             for child in widget.winfo_children():
                 if isinstance(child,ttk.Button):child.config(state='disabled')
@@ -432,6 +503,8 @@ class Hub:
         self.notice.set('Closing owned bots and Guild Wars clients...')
         deadline=time.monotonic()+10
         def finish():
+            if self.monitor_worker.is_alive():
+                self.root.after(100,finish);return
             if getattr(self,'update_worker',None) and self.update_worker.is_alive():
                 self.notice.set('Finishing update and closing owned clients...')
                 self.root.after(100,finish);return
@@ -446,6 +519,7 @@ class Hub:
                 # Closing the last private job handle also enforces kill-on-close.
                 messagebox.showwarning('Shutdown','Owned processes still shutting down or reported errors: '+', '.join(alive+errors))
             for s in self.sessions.values():s['process'].close()
+            for process in self.retired:process.close()
             self.root.destroy()
         finish()
 
