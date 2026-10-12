@@ -80,13 +80,32 @@ class QtDesktop(unittest.TestCase):
         self.assertEqual(self.window.checked,set())
     def test_columns_resize_without_overlay_misalignment(self):
         w=self.window;before=w.table.columnWidth(1)
-        w.resize(1700,640);self.app.processEvents()
+        w.resize(1700,640);self.app.processEvents();self.app.processEvents()
         self.assertGreater(w.table.columnWidth(1),before)
         for key in ('pause','resume','stop','launch'):
             widget=w.row_widgets['Character One'][key]
             self.assertGreaterEqual(widget.width(),58)
         w.resize(900,460);self.app.processEvents()
         self.assertGreaterEqual(w.table.horizontalScrollBar().maximum(),0)
+    def test_manual_widths_are_saved_and_not_overridden(self):
+        from PySide6.QtWidgets import QHeaderView
+        w=self.window
+        self.assertEqual(w.table.horizontalHeader().sectionResizeMode(1),QHeaderView.ResizeMode.Interactive)
+        w.table.horizontalHeader().resizeSection(1,333)
+        self.app.processEvents()
+        self.assertEqual(w.settings['column_widths']['character'],333)
+        w.resize(1700,640);self.app.processEvents();self.app.processEvents()
+        self.assertEqual(w.table.columnWidth(1),333)
+        w.save()
+        saved=json.loads(w.settings_path.read_text())
+        self.assertEqual(saved['column_widths']['character'],333)
+    def test_fit_columns_resets_manual_override(self):
+        w=self.window;w.table.horizontalHeader().resizeSection(1,333)
+        self.assertTrue(w.custom_columns)
+        w.fit_columns()
+        self.assertFalse(w.custom_columns)
+        self.assertNotIn('column_widths',w.settings)
+
     def test_update_buttons_position_and_no_silent_install(self):
         self.assertLess(self.window.check_button.pos().y(),self.window.update_button.pos().y())
         self.assertFalse(self.window.update_button.isEnabled())

@@ -10,7 +10,7 @@ Existing script installations migrate to the executable automatically after upda
 
 ## Controls
 
-Columns: Select, Character, Bot Status, Command, Disable Rendering, Always on Top, Pause, Resume, Stop, Launch. Qt lays out cell controls directly; Character, Status and Command stretch with the window, while checkbox/action columns fit their contents. Horizontal scrolling preserves controls at narrow window sizes. Both checkbox columns synchronize with the actual bot and respect disabled bot controls. Row actions do not change bulk selections.
+Columns: Select, Character, Bot Status, Command, Disable Rendering, Always on Top, Pause, Resume, Stop, Launch. Qt lays out cell controls directly; All column borders can be dragged. Custom widths are saved and remain fixed when the window resizes; horizontal scrolling preserves space at narrow sizes. Fit Columns resets the layout to fit the window and restores automatic sizing until you manually drag a border again. Horizontal scrolling preserves controls at narrow window sizes. Both checkbox columns synchronize with the actual bot and respect disabled bot controls. Row actions do not change bulk selections.
 
 Stop waits for that bot executable to exit, then closes its owned game clients. Normal Close closes all supervisor-owned bot/game sessions. Windows job objects restrict shutdown to tracked descendants; unrelated clients are not matched by name or PID.
 

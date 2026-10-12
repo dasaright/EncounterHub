@@ -88,10 +88,22 @@ class Desktop(QMainWindow):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.table.verticalHeader().setVisible(False);self.table.verticalHeader().setDefaultSectionSize(46)
         self.table.setShowGrid(False);outer.addWidget(self.table,1);self.tree=TableAdapter(self)
-        header=self.table.horizontalHeader();header.setMinimumSectionSize(56)
-        for index,column in enumerate(COLUMNS):
-            header.setSectionResizeMode(index,QHeaderView.ResizeMode.Stretch if column in ('character','status','command') else QHeaderView.ResizeMode.ResizeToContents)
+        header=self.table.horizontalHeader();header.setMinimumSectionSize(60)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
+        self.resizing_columns=False
+        saved=self.settings.get('column_widths',{})
+        self.custom_columns=bool(saved)
+        defaults=(60,220,210,245,150,140,82,82,82,82)
+        self.resizing_columns=True
+        for index,key in enumerate(COLUMNS):
+            width=saved.get(key,defaults[index]) if isinstance(saved,dict) else defaults[index]
+            header.resizeSection(index,max(self.minimum_column(index),int(width)))
+        self.resizing_columns=False
+        self.width_save=QTimer(self);self.width_save.setSingleShot(True);self.width_save.timeout.connect(self.save)
+        header.sectionResized.connect(self.column_resized)
+        fit=QPushButton('Fit Columns');fit.clicked.connect(self.fit_columns);toolbar.insertWidget(3,fit)
+        if not self.custom_columns:QTimer.singleShot(0,self.auto_fit)
         footer=QHBoxLayout();outer.addLayout(footer)
         for text,callback in [('Launch Selected',self.launch),('Pause Selected',lambda:self.command('Pause')),('Resume Selected',lambda:self.command('Resume')),('Stop Selected',self.stop),('Trade Mode',lambda:self.command('Trade Mode')),('Open Lockboxes',lambda:self.command('Open Lockboxes')),('Show Selected',self.show_bots)]:
             button=QPushButton(text);button.clicked.connect(callback);footer.addWidget(button)
@@ -104,6 +116,40 @@ class Desktop(QMainWindow):
         if start_supervisor and not self.exe.is_file():QTimer.singleShot(0,self.choose)
         menu=self.menuBar().addMenu('Application')
         shortcut=QAction('Create Desktop Shortcut',self);shortcut.triggered.connect(self.shortcut);menu.addAction(shortcut)
+
+    def minimum_column(self,index):
+        if COLUMNS[index] in ('character','status','command'):return 100
+        return max(60,self.fontMetrics().horizontalAdvance(CAPTIONS[index])+24)
+
+    def column_resized(self,index,old,width):
+        if self.resizing_columns:return
+        self.resizing_columns=True
+        self.table.horizontalHeader().resizeSection(index,max(self.minimum_column(index),width))
+        self.resizing_columns=False
+        self.custom_columns=True
+        self.settings['column_widths']={key:self.table.columnWidth(i) for i,key in enumerate(COLUMNS)}
+        self.width_save.start(300)
+
+    def fit_columns(self):
+        # Explicit reset. Normal window resizing never overrides custom widths.
+        self.custom_columns=False
+        available=self.table.viewport().width()
+        fixed={i:max(self.minimum_column(i),82 if COLUMNS[i] in ('pause','resume','stop','launch') else self.minimum_column(i)) for i in range(len(COLUMNS)) if COLUMNS[i] not in ('character','status','command')}
+        remainder=max(300,available-sum(fixed.values()))
+        flexible={1:max(100,round(remainder*.32)),2:max(100,round(remainder*.30))}
+        flexible[3]=max(100,remainder-flexible[1]-flexible[2])
+        self.resizing_columns=True
+        for index,width in {**fixed,**flexible}.items():self.table.setColumnWidth(index,width)
+        self.resizing_columns=False
+        self.settings.pop('column_widths',None)
+        self.width_save.start(300)
+
+    def auto_fit(self):
+        if not self.custom_columns:self.fit_columns()
+
+    def resizeEvent(self,event):
+        super().resizeEvent(event)
+        if hasattr(self,'table') and not self.custom_columns:QTimer.singleShot(0,self.auto_fit)
 
     def load_names(self):
         import re
