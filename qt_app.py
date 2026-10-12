@@ -21,8 +21,8 @@ try:
 except ImportError:
     STYLE='QWidget {background:#14171c;color:#dce5ef;font-family:"Segoe UI";} QPushButton {background:#202731;border-radius:6px;padding:7px;} QPushButton:hover {background:#2a3741;} QHeaderView::section {background:#162337;padding:7px;} QTableWidget{background:#1b2027;}'
 
-COLUMNS=('check','character','status','command','render','ontop','pause','resume','stop','launch')
-CAPTIONS=('Select','Character','Bot Status','Command','Disable Rendering','Always on Top','Pause','Resume','Stop','Launch')
+COLUMNS=('check','character','status','command','render','ontop','pause','resume','trade','stop','launch')
+CAPTIONS=('Select','Character','Bot Status','Command','Disable Rendering','Always on Top','Pause','Resume','Trade','Stop','Launch')
 
 class QtDialogs:
     @staticmethod
@@ -94,7 +94,7 @@ class Desktop(QMainWindow):
         self.resizing_columns=False
         saved=self.settings.get('column_widths',{})
         self.custom_columns=bool(saved)
-        defaults=(60,220,210,245,150,140,82,82,82,82)
+        defaults=(60,220,210,245,150,140,82,82,82,82,82)
         self.resizing_columns=True
         for index,key in enumerate(COLUMNS):
             width=saved.get(key,defaults[index]) if isinstance(saved,dict) else defaults[index]
@@ -134,7 +134,7 @@ class Desktop(QMainWindow):
         # Explicit reset. Normal window resizing never overrides custom widths.
         self.custom_columns=False
         available=self.table.viewport().width()
-        fixed={i:max(self.minimum_column(i),82 if COLUMNS[i] in ('pause','resume','stop','launch') else self.minimum_column(i)) for i in range(len(COLUMNS)) if COLUMNS[i] not in ('character','status','command')}
+        fixed={i:max(self.minimum_column(i),82 if COLUMNS[i] in ('pause','resume','trade','stop','launch') else self.minimum_column(i)) for i in range(len(COLUMNS)) if COLUMNS[i] not in ('character','status','command')}
         remainder=max(300,available-sum(fixed.values()))
         flexible={1:max(100,round(remainder*.32)),2:max(100,round(remainder*.30))}
         flexible[3]=max(100,remainder-flexible[1]-flexible[2])
@@ -171,7 +171,7 @@ class Desktop(QMainWindow):
             self.table.setCellWidget(row,COLUMNS.index(key),holder);widgets[key]=checkbox
             checkbox.setChecked(name in self.checked if key=='check' else False);checkbox.setEnabled(key=='check')
             checkbox.clicked.connect(lambda checked,k=key,n=name:self.checkbox(n,k,checked))
-        for key in ('pause','resume','stop','launch'):
+        for key in ('pause','resume','trade','stop','launch'):
             button=QPushButton(key.title());button.setMinimumWidth(58);self.table.setCellWidget(row,COLUMNS.index(key),button);widgets[key]=button
             button.clicked.connect(lambda checked=False,k=key,n=name:self.row_action(n,k))
         self.row_widgets[name]=widgets
@@ -179,7 +179,7 @@ class Desktop(QMainWindow):
     def row_action(self,name,key):
         if key=='launch':self.launch([name])
         elif key=='stop':self.stop([name])
-        else:self.command(key.title(),[name])
+        else:self.command('Trade Mode' if key=='trade' else key.title(),[name])
 
     def checkbox(self,name,key,checked):
         if key=='check':
@@ -203,7 +203,7 @@ class Desktop(QMainWindow):
         if filename:self.exe=Path(filename);self.path_label.setText(filename);self.sessions.clear();self.load_names();self.save();self.reconnect()
 
     def session(self,process,phase='select'):
-        return dict(process=process,phase=phase,deadline=time.monotonic()+90,pending=None,command_deadline=0,sent_at=0,window=None,controls=None,next_games=0,stopping=False,stop_phase=None,options={},option_requests={},next_options=0)
+        return dict(process=process,phase=phase,deadline=time.monotonic()+90,pending=None,command_deadline=0,sent_at=0,window=None,controls=None,next_games=0,stopping=False,stop_phase=None,options={},option_requests={},next_options=0,minimize_on_start=phase=='select',minimized=False)
 
     def reconnect(self):
         for record in self.broker.call('snapshot'):

@@ -72,17 +72,19 @@ class QtDesktop(unittest.TestCase):
         self.window.monitor_stop.set();self.window.monitor_worker.join(timeout=5);self.window.restarting=True;self.window.close();self.app.processEvents()
     def test_native_columns_and_action_buttons(self):
         from qt_app import COLUMNS
-        self.assertEqual(self.window.table.columnCount(),10)
-        self.assertEqual(COLUMNS,('check','character','status','command','render','ontop','pause','resume','stop','launch'))
+        self.assertEqual(self.window.table.columnCount(),11)
+        self.assertEqual(COLUMNS,('check','character','status','command','render','ontop','pause','resume','trade','stop','launch'))
         self.window.command=Mock();self.window.launch=Mock();self.window.stop=Mock()
         self.window.row_widgets['Character One']['pause'].click();self.window.command.assert_called_once_with('Pause',['Character One'])
+        self.window.command.reset_mock();self.window.row_widgets['Character One']['trade'].click()
+        self.window.command.assert_called_once_with('Trade Mode',['Character One'])
         self.window.row_widgets['Character One']['launch'].click();self.window.launch.assert_called_once_with(['Character One'])
         self.assertEqual(self.window.checked,set())
     def test_columns_resize_without_overlay_misalignment(self):
         w=self.window;before=w.table.columnWidth(1)
         w.resize(1700,640);self.app.processEvents();self.app.processEvents()
         self.assertGreater(w.table.columnWidth(1),before)
-        for key in ('pause','resume','stop','launch'):
+        for key in ('pause','resume','trade','stop','launch'):
             widget=w.row_widgets['Character One'][key]
             self.assertGreaterEqual(widget.width(),58)
         w.resize(900,460);self.app.processEvents()
@@ -159,3 +161,16 @@ class RealSupervisor(unittest.TestCase):
                     except OSError:pass
                 if keeper.poll() is None:keeper.terminate()
                 keeper.wait(timeout=10);unrelated.terminate();unrelated.wait(timeout=10)
+
+class MinimizeOnStart(unittest.TestCase):
+    def test_new_bot_minimized_once(self):
+        from app_main import minimize_started_bot
+        native=Mock();native.u.ShowWindowAsync.return_value=True
+        session={'minimize_on_start':True,'minimized':False}
+        minimize_started_bot(native,123,session);minimize_started_bot(native,123,session)
+        native.u.ShowWindowAsync.assert_called_once_with(123,6)
+    def test_reconnected_bot_is_not_minimized(self):
+        from app_main import minimize_started_bot
+        native=Mock()
+        minimize_started_bot(native,123,{'minimize_on_start':False,'minimized':False})
+        native.u.ShowWindowAsync.assert_not_called()

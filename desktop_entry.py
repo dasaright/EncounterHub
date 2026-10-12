@@ -38,7 +38,7 @@ if '--smoke-test' in sys.argv:
     from PySide6.QtWidgets import QApplication
     app=QApplication([]);app.setStyleSheet(STYLE);window=Desktop('Executable smoke test',start_supervisor=False)
     window.show();app.processEvents()
-    assert window.table.columnCount()==10
+    assert window.table.columnCount()==11
     assert not window.update_button.isEnabled()
     assert window.check_button.pos().y()<window.update_button.pos().y()
     window.monitor_stop.set();window.monitor_worker.join(timeout=5)

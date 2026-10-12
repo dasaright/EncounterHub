@@ -10,7 +10,7 @@ Existing script installations migrate to the executable automatically after upda
 
 ## Controls
 
-Columns: Select, Character, Bot Status, Command, Disable Rendering, Always on Top, Pause, Resume, Stop, Launch. Qt lays out cell controls directly; All column borders can be dragged. Custom widths are saved and remain fixed when the window resizes; horizontal scrolling preserves space at narrow sizes. Fit Columns resets the layout to fit the window and restores automatic sizing until you manually drag a border again. Horizontal scrolling preserves controls at narrow window sizes. Both checkbox columns synchronize with the actual bot and respect disabled bot controls. Row actions do not change bulk selections.
+Columns: Select, Character, Bot Status, Command, Disable Rendering, Always on Top, Pause, Resume, Trade, Stop, Launch. Qt lays out cell controls directly; All column borders can be dragged. Custom widths are saved and remain fixed when the window resizes; horizontal scrolling preserves space at narrow sizes. Fit Columns resets the layout to fit the window and restores automatic sizing until you manually drag a border again. Horizontal scrolling preserves controls at narrow window sizes. Both checkbox columns synchronize with the actual bot and respect disabled bot controls. Row actions do not change bulk selections.
 
 Stop waits for that bot executable to exit, then closes its owned game clients. Normal Close closes all supervisor-owned bot/game sessions. Windows job objects restrict shutdown to tracked descendants; unrelated clients are not matched by name or PID.
 
@@ -27,3 +27,5 @@ The first migration from 1.x requires closing the old hub once; its old ownershi
 Install `requirements.txt` for source development, run `hub.py`, and use `python -m unittest discover -s tests -v`. To publish app changes, bump VERSION in app_main.py and run `python tools/build_manifest.py`, then commit code and all three manifests together. GitHub Actions tests Windows ownership/reconnection and Qt controls, builds a windowless PyInstaller executable, smoke-tests it, and publishes a release ZIP plus SHA-256. Runtime source updates do not change the packaged Python/Qt runtime; changes to runtime dependencies need a new executable build.
 
 The legacy `bundle.json` remains a five-file migration manifest so 1.x Check for Updates can install the upgraded bootstrap. The native desktop checks `desktop-bundle.json` for the full Qt application.
+
+Newly launched bot windows minimize once startup is confirmed. Show Selected restores them without re-minimizing. Reconnected windows keep their existing state. The per-row Trade button requests Trade Mode for that character, using the same pause-then-trade behavior as the bulk command.

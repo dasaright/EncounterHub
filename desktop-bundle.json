@@ -1,16 +1,16 @@
 {
   "format": 1,
-  "version": "2.0.1",
+  "version": "2.0.2",
   "files": {
-    "app_main.py": "29216e325251b5ed24499dd68d7df1e6d09ca0875509d4412aaf52874ff12c0d",
+    "app_main.py": "863d2f7e29eeeca96189c6db2d30548dec77ec292d60ddcc4390de86dbcab2b4",
     "hub.py": "7831c1ab7ff55055ea61461c42dce618f2e6b51cfb46679d1bd5b1a7271c3e47",
     "Launch Hub.vbs": "af63f551350e43648b46cf0cadb64b18c4673ff87139185825477164db4b306f",
     "Launch Hub.cmd": "0279557dbdffc21832440d5b7396efac5d4eda7f25f8b77a9467bb6aad526238",
-    "update.json": "3f16a224e4367f6c5e3ecb631194a08974b4fb7c994402c93a9d8b3602463233",
-    "qt_app.py": "30654fb12636d590c44ee4d00f4d502dca06acba58e2495cc5b4ebf5f304c5b6",
+    "update.json": "5e295bd53697831c68af100c14c4a9c8964ad2743bd84b55914121d000aafe77",
+    "qt_app.py": "9c5c47d19a10ab50d19c5eae7f24a91a61b064bf75160e1e79a533ec094e0c09",
     "qt_style.py": "15c6d7553a29550f9403a1ae147138b0e07f424e0d3c9ef43a169d2988400571",
     "supervisor.py": "cbd2a7ca0883008a23b240cef333c896b5ca2a97d0055ce3fc6e73979cdef859",
     "requirements.txt": "c1f73e86a8ee5454b62dab6909045e72c45f35d0f9fe6f727700a498c5f9bec6",
-    "bundle.json": "da84efe6e8c2065a7938f7d43a4acafde74e567cb5208428dac1690a9e097275"
+    "bundle.json": "66ac62f50a771318ef4fb9e7f0389e92556ecc86f757a71fa7e689a63c6e4764"
   }
 }

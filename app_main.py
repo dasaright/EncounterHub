@@ -12,7 +12,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-VERSION = '2.0.1'
+VERSION = '2.0.2'
 
 
 def command_action(command, buttons):
@@ -92,6 +92,11 @@ def advance_stop(session):
         return 'Bot exited; closing owned game clients...',False
     session.update(stopping=False,phase='stopped',pending=None)
     return 'Stopped (bot and owned clients)',True
+
+
+def minimize_started_bot(native,window,session):
+    if session.get('minimize_on_start') and not session.get('minimized'):
+        if native.u.ShowWindowAsync(window,6):session['minimized']=True
 
 
 class JobProcess:
@@ -213,6 +218,7 @@ class Native:
             'PostMessageW': ([W.HWND, W.UINT, W.WPARAM, W.LPARAM], W.BOOL),
             'IsWindowEnabled': ([W.HWND], W.BOOL),
             'ShowWindow': ([W.HWND, ctypes.c_int], W.BOOL),
+            'ShowWindowAsync': ([W.HWND, ctypes.c_int], W.BOOL),
             'SetForegroundWindow': ([W.HWND], W.BOOL),
         }
         for name, (args, result) in signatures.items():
@@ -516,7 +522,7 @@ class Hub:
         children=s['controls']
         buttons={self.native.text(c):c for c in children if self.native.kind(c)=='Button'}
         if self.native.title(h)=='Encounter Re:Built - '+name:
-            s['phase']='done';self.report(name,'status','Started (window confirmed)');self.sync_options(name,s)
+            s['phase']='done';self.report(name,'status','Started (window confirmed)');minimize_started_bot(self.native,h,s);self.sync_options(name,s)
         if s['phase']!='done':
             if time.monotonic()>s['deadline']:self.report(name,'status','Needs attention; open bot');return
             if s['phase']=='select':
