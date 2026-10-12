@@ -1,47 +1,27 @@
-# Encounter Hub
+# Encounter Hub 2 Desktop
 
-Windows Python launcher for multiple instances of the existing Encounter ReBuilt bot.
+Native Windows application for controlling multiple Encounter ReBuilt bots, styled to match TacoBot's current Qt desktop: dark panels, Segoe UI, teal accents, rounded buttons and compact tables.
 
-## Setup
+## Install / taskbar
 
-1. Install Python 3.10 or newer with Tcl/Tk (the standard Windows installer includes it).
-2. Download this repository using **Code → Download ZIP** and extract it to a writable folder.
-3. Double-click **Launch Hub.vbs**, accept the administrator prompt, then choose your existing `Encounter_ReBuilt.exe`.
-4. Check any number of characters and click **Launch Selected**.
+Download **EncounterHub-Windows.zip** from [Releases](https://github.com/dasaright/EncounterHub/releases/latest), extract the whole EncounterHub folder to a permanent writable location, and run **EncounterHub.exe**. No Python installation is required. Right-click its running taskbar icon and choose **Pin to taskbar**. The Application menu can also create a desktop shortcut. Keep the `_internal` folder and adjacent Python files; the executable loads updateable modules from beside itself.
 
-No pip dependencies or AutoIt installation are required. Keep `hub.py`, `app_main.py`, and `Launch Hub.vbs` together. The VBS launcher uses windowless Python so no black console stays open. Create a desktop shortcut to `Launch Hub.vbs` if desired. The older CMD entry point forwards to this launcher, but may briefly show a console; use the VBS file directly to avoid it entirely. The original bot and its Config/Files/Images stay in their existing folder.
+Existing script installations migrate to the executable automatically after updating and reopening. Settings stay in `%LOCALAPPDATA%\EncounterHub\settings.json`.
 
-## Commands
+## Controls
 
-Use the same checked characters for **Pause**, **Resume**, **Trade Mode**, **Open Lockboxes**, **Show**, or **Stop**.
-Trade and lockbox requests pause farming, wait for the current run to finish, then select that mode. Already active modes are not toggled off. Trade Mode honors the original bot's restrictions (including Guild Hall sell location). A new command replaces the previous queued request. Waiting commands time out after 30 minutes.
+Columns: Select, Character, Bot Status, Command, Disable Rendering, Always on Top, Pause, Resume, Stop, Launch. Qt lays out cell controls directly; Character, Status and Command stretch with the window, while checkbox/action columns fit their contents. Horizontal scrolling preserves controls at narrow window sizes. Both checkbox columns synchronize with the actual bot and respect disabled bot controls. Row actions do not change bulk selections.
 
-**Stop Selected Bots** stops the selected bot executables first, verifies that they have exited using their process handles, then closes their privately owned game processes and confirms the job is empty. Unselected bots and unrelated game clients remain open. **Closing the hub terminates all bot and game processes owned by this hub session, then waits for them to exit.** Other Guild Wars clients are left alone. The GW PIDs column shows each bot’s currently owned `Gw.exe` processes, including relaunches. Each bot is launched suspended, assigned to a private Windows Job with kill-on-close, then resumed. Windows tracks its descendants without relying on process names, window titles, or parent PID polling. If ownership assignment fails, that bot is stopped before it can launch a game. Only bots launched in the current hub session are controlled; existing bot instances are not adopted. Close previous bot instances before launching those characters again. Use separate accounts for simultaneous game sessions.
+Stop waits for that bot executable to exit, then closes its owned game clients. Normal Close closes all supervisor-owned bot/game sessions. Windows job objects restrict shutdown to tracked descendants; unrelated clients are not matched by name or PID.
 
-Selections and the bot path are saved in `%LOCALAPPDATA%\EncounterHub\settings.json`. Account passwords are neither read nor uploaded by the hub.
+## Updates without interrupting bots
 
-## Automatic updates
+**Check for Updates** is above **Update Now**. Checking does not install code. When a newer bundle is available, Update Now downloads and validates every file from the commit that was checked, installs with rollback, and restarts only the hub GUI. The background supervisor retains ownership of active bots and games, and the reopened hub detects and reconnects those sessions automatically. Queued GUI commands are cancelled at restart; processes continue uninterrupted. Regular Close still stops owned sessions.
 
-At startup, `hub.py` checks `dasaright/EncounterHub` on GitHub's `main` branch and updates `app_main.py` before opening the GUI. **Check for Updates** also downloads new app code while the hub stays open; reopen the hub to use it. Downloading an update does not stop running bots. Closing the hub to activate it also closes this hub’s bots and game clients. Settings and the original bot files are preserved.
+If the GUI unexpectedly exits, reopen the executable and it reconnects to the supervisor's active sessions. It does not claim or close unrelated manually launched Guild Wars clients. The local supervisor uses an authenticated loopback socket and stores its endpoint in `%LOCALAPPDATA%\EncounterHub\supervisor.json`. Do not manually delete that file while sessions are running.
 
-The updater retrieves the manifest and source from the same immutable commit, checks SHA-256, checks Python syntax, keeps `app_main.py.backup`, and atomically replaces the app file. If GitHub is offline or an update fails validation, it uses the installed app. Repository maintainers control the downloaded code; the updater uses no GitHub token. **Check for Updates updates the complete allowlisted bundle**, including `hub.py` and both launchers. All files are verified before any are installed, backups are kept, and failed installations roll back files already replaced. `update.json` remains compatible with older hubs, while `bundle.json` describes the complete update. An older hub upgrades its app with its existing Check for Updates button; after reopening, the new app automatically upgrades the updater and launcher files. No manual ZIP download is needed for this migration.
+The first migration from 1.x requires closing the old hub once; its old ownership model cannot preserve jobs across a restart. Subsequent 2.x Update Now restarts preserve bots. The supervisor keeps its running version until normal Close stops all jobs; the next launch starts the updated supervisor.
 
-## Publishing changes
+## Development
 
-Edit `app_main.py`, bump `VERSION`, and run `python tools/build_manifest.py` to refresh `update.json` and `bundle.json`. Commit all changed code and manifests together to `main`. Run `python -m unittest discover -s tests` before publishing. All installations check the updated manifest on their next launch.
-
-## Validation and limits
-
-Unit tests cover command routing, update validation, offline/error behavior, and atomic installation. Windows control calls are designed against the provided bot's exact AutoIt controls. Live Guild Wars testing is required on Windows. Started status confirms the character-specific bot window, not successful farming; sent commands mean button-click requests, not task completion. Bot dialogs or missing account configuration require attention in the original bot window.
-
-## Switching from the previous launcher
-
-Use **Check for Updates** in your existing hub, then close and reopen it. The upgraded app installs the full launcher bundle. Use `Launch Hub.vbs` afterward for console-free startup. Saved selections and the bot path remain intact. Bots created before this ownership upgrade cannot be adopted safely; close those old bot/game windows manually once before launching new instances through version 1.1.0.
-
-## Responsiveness
-
-Bot monitoring and cross-process control reads run in a background worker. The GUI only consumes status events. Bot windows and relevant controls are cached; running bots without pending commands do not require button reads. Owned game PID scans run every two seconds. Stop and shutdown wait asynchronously so the hub remains responsive.
-
-## Per-character controls
-
-Rows show Select, Character, Bot Status, Command, Disable Rendering, Always on Top, Pause, Resume, Stop, and Launch. Checkbox states synchronize from the corresponding bot approximately once a second. Clicking a hub checkbox requests the same state in that bot; disabled or unresponsive bot controls remain unavailable in the hub. Direct changes in the bot also appear in the hub. Each row action affects only that character without changing bulk selections. Game PID tracking continues internally.
+Install `requirements.txt` for source development, run `hub.py`, and use `python -m unittest discover -s tests -v`. To publish app changes, bump VERSION in app_main.py and run `python tools/build_manifest.py`, then commit code and manifests together. GitHub Actions tests Windows ownership/reconnection and Qt controls, builds a windowless PyInstaller executable, smoke-tests it, and publishes a release ZIP plus SHA-256. Runtime source updates do not change the packaged Python/Qt runtime; changes to runtime dependencies need a new executable build.

@@ -7,3 +7,8 @@ Log/
 HubSelection.json
 settings.json
 Encounter_ReBuilt.exe
+
+dist/
+build/
+*.spec
+taco.ico

@@ -11,7 +11,7 @@ import urllib.request
 
 HUB_BUNDLE_SUPPORT = True
 REPOSITORY = 'dasaright/EncounterHub'
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(sys.executable).resolve().parent if getattr(sys,'frozen',False) else Path(__file__).resolve().parent
 
 
 def api(path):
@@ -61,7 +61,7 @@ def update(root=ROOT):
 
 def elevate():
     if not ctypes.windll.shell32.IsUserAnAdmin():
-        args = subprocess.list2cmdline([str(ROOT / 'hub.py')])
+        args = subprocess.list2cmdline(([] if getattr(sys,'frozen',False) else [str(ROOT/'hub.py')])+sys.argv[1:])
         result = ctypes.windll.shell32.ShellExecuteW(None, 'runas', sys.executable, args, str(ROOT), 1)
         if result <= 32:
             raise RuntimeError('Administrator launch was cancelled or failed')
@@ -69,11 +69,50 @@ def elevate():
     return False
 
 
+def wait_for_exit(pid):
+    kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+    kernel.OpenProcess.argtypes=[ctypes.c_uint32,ctypes.c_bool,ctypes.c_uint32];kernel.OpenProcess.restype=ctypes.c_void_p
+    kernel.WaitForSingleObject.argtypes=[ctypes.c_void_p,ctypes.c_uint32];kernel.CloseHandle.argtypes=[ctypes.c_void_p]
+    handle=kernel.OpenProcess(0x100000,False,pid)
+    if handle:
+        result=kernel.WaitForSingleObject(handle,30000);kernel.CloseHandle(handle)
+        if result==0x102:raise RuntimeError('Previous hub has not finished restarting')
+
+
+def install_desktop():
+    import shutil
+    import zipfile
+    import io
+    release=api('releases/latest')
+    assets={a['name']:a for a in release['assets']}
+    url=assets['EncounterHub-Windows.zip']['browser_download_url']
+    hash_url=assets['EncounterHub-Windows.zip.sha256']['browser_download_url']
+    def download(address):
+        req=urllib.request.Request(address,headers={'User-Agent':'EncounterHub'})
+        with urllib.request.urlopen(req,timeout=120) as response:return response.read()
+    payload=download(url);digest=download(hash_url).decode().split()[0]
+    if hashlib.sha256(payload).hexdigest()!=digest:raise RuntimeError('Executable download hash mismatch')
+    target=Path(os.environ['LOCALAPPDATA'])/'EncounterHub'/'Desktop'
+    target.mkdir(parents=True,exist_ok=True)
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        for item in archive.infolist():
+            dest=(target/item.filename).resolve()
+            if not dest.is_relative_to(target.resolve()):raise RuntimeError('Unsafe executable archive path')
+        archive.extractall(target)
+    executable=target/'EncounterHub'/'EncounterHub.exe'
+    subprocess.Popen([str(executable),'--wait-pid',str(os.getpid())],cwd=str(executable.parent))
+
+
 def main():
     if os.name != 'nt':
         raise SystemExit('Encounter Hub requires Windows.')
     if elevate():
         return
+    if '--supervisor' in sys.argv:
+        from supervisor import serve
+        serve();return
+    if '--wait-pid' in sys.argv:
+        wait_for_exit(int(sys.argv[sys.argv.index('--wait-pid')+1]))
     # One hub at a time prevents duplicate control/update sessions.
     kernel = ctypes.WinDLL('kernel32', use_last_error=True)
     kernel.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p]
@@ -83,18 +122,18 @@ def main():
         ctypes.windll.user32.MessageBoxW(None, 'Encounter Hub is already open.', 'Encounter Hub', 0)
         return
     try:
-        try:
-            status = update()
-        except Exception as exc:
-            status = 'Update check unavailable; using installed version: ' + str(exc)
-        if not (ROOT / 'app_main.py').exists():
-            raise RuntimeError('No installed app_main.py. Download the complete repository ZIP.')
+        if str(ROOT) not in sys.path:sys.path.insert(0,str(ROOT))
+        if not (ROOT/'app_main.py').exists():
+            update()
         import app_main
-        try:
-            bundle_status = app_main.update_bundle()
-            status = bundle_status
-        except Exception as exc:
-            status += '; launcher bundle check unavailable: ' + str(exc)
+        # New installs use explicit Check/Update Now, never install silently.
+        if app_main.VERSION.startswith('1.'):
+            update()
+            import importlib
+            importlib.reload(app_main)
+        if not (ROOT/'qt_app.py').exists() or not (ROOT/'supervisor.py').exists():
+            app_main.update_bundle()
+        status='Ready - use Check for Updates to find a newer version'
         app_main.run(status)
     except Exception as exc:
         ctypes.windll.user32.MessageBoxW(None, str(exc), 'Encounter Hub error', 16)

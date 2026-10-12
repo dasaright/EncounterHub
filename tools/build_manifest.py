@@ -8,5 +8,5 @@ module=ast.parse(source)
 version=next(ast.literal_eval(n.value) for n in module.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='VERSION' for t in n.targets))
 (root/'update.json').write_text(json.dumps({'format':1,'version':version,'files':{'app_main.py':hashlib.sha256(source).hexdigest()}},indent=2)+'\n')
 
-paths=['app_main.py','hub.py','Launch Hub.vbs','Launch Hub.cmd','update.json']
+paths=['app_main.py','hub.py','Launch Hub.vbs','Launch Hub.cmd','update.json','qt_app.py','qt_style.py','supervisor.py','requirements.txt']
 (root/'bundle.json').write_text(json.dumps({'format':1,'version':version,'files':{p:hashlib.sha256((root/p).read_bytes()).hexdigest() for p in paths}},indent=2)+'\n')

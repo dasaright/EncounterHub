@@ -12,7 +12,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-VERSION = '1.2.0'
+VERSION = '2.0.0'
 
 
 def command_action(command, buttons):
@@ -38,15 +38,16 @@ def command_action(command, buttons):
     return command, 'Waiting for ' + command, False
 
 
-def update_bundle(root=None):
+def update_bundle(root=None, commit=None):
     """Install the complete allowlisted launcher bundle, with rollback on failure."""
     import hashlib
     from hub import api, remote_file, ROOT
     root = ROOT if root is None else Path(root)
-    commit = api('git/ref/heads/main')['object']['sha']
+    commit = commit or api('git/ref/heads/main')['object']['sha']
     manifest = json.loads(remote_file('bundle.json', commit))
-    allowed = {'app_main.py', 'hub.py', 'Launch Hub.vbs', 'Launch Hub.cmd', 'update.json'}
-    if manifest.get('format') != 1 or set(manifest.get('files', {})) != allowed:
+    required = {'app_main.py', 'hub.py', 'Launch Hub.vbs', 'Launch Hub.cmd', 'update.json'}
+    allowed = required | {'qt_app.py','qt_style.py','supervisor.py','requirements.txt'}
+    if manifest.get('format') != 1 or not required.issubset(manifest.get('files', {})) or not set(manifest.get('files', {})).issubset(allowed):
         raise ValueError('Unsupported launcher bundle')
     payloads = {}
     for name, digest in manifest['files'].items():
@@ -617,4 +618,16 @@ class Hub:
 
 
 def run(update_status):
-    root=tk.Tk();Hub(root,update_status);root.mainloop()
+    # Existing source installations migrate themselves to the packaged desktop.
+    try:
+        import PySide6
+    except ImportError:
+        from hub import install_desktop
+        install_desktop()
+        return
+    try:
+        from qt_app import run as run_qt
+    except ImportError:
+        update_bundle()
+        from qt_app import run as run_qt
+    run_qt(update_status)

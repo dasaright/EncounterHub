@@ -1,0 +1,55 @@
+name: Build Encounter Hub Desktop
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  desktop:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install build dependencies
+        run: python -m pip install -r requirements.txt pyinstaller
+      - name: Tests
+        run: python -m unittest discover -s tests -v
+      - name: TacoBot icon
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/dasaright/TacoBot/43a93c9280823327a519421afe78cc25458cd17f/relay_agent/assets/taco.ico' -OutFile taco.ico
+      - name: Build windowless desktop
+        run: pyinstaller --clean --noconfirm --onedir --windowed --name EncounterHub --icon taco.ico desktop_entry.py
+      - name: Copy updateable modules
+        shell: pwsh
+        run: |
+          Copy-Item hub.py,app_main.py,qt_app.py,qt_style.py,supervisor.py,requirements.txt,update.json,bundle.json,taco.ico dist/EncounterHub/
+          Copy-Item 'Launch Hub.vbs','Launch Hub.cmd' dist/EncounterHub/
+      - name: Executable smoke test
+        shell: pwsh
+        run: |
+          $p = Start-Process 'dist/EncounterHub/EncounterHub.exe' -ArgumentList '--smoke-test' -PassThru
+          if (!$p.WaitForExit(60000)) { $p.Kill(); throw 'Executable smoke test timed out' }
+          if ($p.ExitCode -ne 0) { throw "Executable smoke test failed: $($p.ExitCode)" }
+      - name: Package executable
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/EncounterHub -DestinationPath EncounterHub-Windows.zip
+          $hash=(Get-FileHash EncounterHub-Windows.zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  EncounterHub-Windows.zip" | Set-Content -Encoding ascii EncounterHub-Windows.zip.sha256
+      - name: Publish desktop release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version=python -c "import app_main; print(app_main.VERSION)"
+          $tag="v$version"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag EncounterHub-Windows.zip EncounterHub-Windows.zip.sha256 --clobber --repo $env:GITHUB_REPOSITORY
+          } else {
+            gh release create $tag EncounterHub-Windows.zip EncounterHub-Windows.zip.sha256 --target $env:GITHUB_SHA --title "Encounter Hub $version" --notes 'Native Qt desktop matching TacoBot. Taskbar pinning, responsive rows, explicit Update Now and reconnection to supervised bots.' --repo $env:GITHUB_REPOSITORY
+          }
