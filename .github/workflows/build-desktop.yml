@@ -34,6 +34,17 @@ jobs:
           $p = Start-Process 'dist/EncounterHub/EncounterHub.exe' -ArgumentList '--smoke-test' -PassThru
           if (!$p.WaitForExit(60000)) { $p.Kill(); throw 'Executable smoke test timed out' }
           if ($p.ExitCode -ne 0) { throw "Executable smoke test failed: $($p.ExitCode)" }
+      - name: Packaged supervisor integration
+        shell: pwsh
+        run: |
+          $keeper = Start-Process 'dist/EncounterHub/EncounterHub.exe' -ArgumentList '--supervisor' -PassThru
+          try {
+            python tools/test_packaged_supervisor.py
+            if ($LASTEXITCODE -ne 0) { throw 'Packaged supervisor verification failed' }
+            if (!$keeper.WaitForExit(10000)) { throw 'Supervisor did not exit after test' }
+          } finally {
+            if (!$keeper.HasExited) { $keeper.Kill() }
+          }
       - name: Package executable
         shell: pwsh
         run: |

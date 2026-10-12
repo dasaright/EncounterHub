@@ -10,6 +10,17 @@ import ctypes
 import urllib.request
 import zipfile
 import hashlib
+import secrets
+import json
+import queue
+import re
+import threading
+import time
+import subprocess
+import base64
+import io
+import shutil
+import urllib.parse
 import PySide6.QtCore
 import PySide6.QtGui
 import PySide6.QtWidgets
