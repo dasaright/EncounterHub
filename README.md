@@ -6,10 +6,10 @@ Windows Python launcher for multiple instances of the existing Encounter ReBuilt
 
 1. Install Python 3.10 or newer with Tcl/Tk (the standard Windows installer includes it).
 2. Download this repository using **Code → Download ZIP** and extract it to a writable folder.
-3. Double-click **Launch Hub.cmd**, accept the administrator prompt, then choose your existing `Encounter_ReBuilt.exe`.
+3. Double-click **Launch Hub.vbs**, accept the administrator prompt, then choose your existing `Encounter_ReBuilt.exe`.
 4. Check any number of characters and click **Launch Selected**.
 
-No pip dependencies or AutoIt installation are required. Keep `hub.py` and `app_main.py` together. The original bot and its Config/Files/Images stay in their existing folder.
+No pip dependencies or AutoIt installation are required. Keep `hub.py`, `app_main.py`, and `Launch Hub.vbs` together. The VBS launcher uses windowless Python so no black console stays open. Create a desktop shortcut to `Launch Hub.vbs` if desired. The older CMD entry point forwards to this launcher, but may briefly show a console; use the VBS file directly to avoid it entirely. The original bot and its Config/Files/Images stay in their existing folder.
 
 ## Commands
 
@@ -33,3 +33,7 @@ Edit `app_main.py`, bump `VERSION`, and run `python tools/build_manifest.py` to 
 ## Validation and limits
 
 Unit tests cover command routing, update validation, offline/error behavior, and atomic installation. Windows control calls are designed against the provided bot's exact AutoIt controls. Live Guild Wars testing is required on Windows. Started status confirms the character-specific bot window, not successful farming; sent commands mean button-click requests, not task completion. Bot dialogs or missing account configuration require attention in the original bot window.
+
+## Switching from the previous launcher
+
+Download the updated repository ZIP once to get `Launch Hub.vbs`. Close the hub, replace the launcher files, then open `Launch Hub.vbs` from now on. Saved selections and the bot path remain intact. App auto-updates do not install new bootstrap/launcher files.
