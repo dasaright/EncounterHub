@@ -57,7 +57,7 @@ class Desktop(QMainWindow):
     command=engine.Hub.command
     stop=engine.Hub.stop
     save=engine.Hub.save
-    show=engine.Hub.show
+    show_bots=engine.Hub.show
     selected=engine.Hub.selected
 
     def __init__(self,status='Ready',start_supervisor=True):
@@ -93,7 +93,7 @@ class Desktop(QMainWindow):
             header.setSectionResizeMode(index,QHeaderView.ResizeMode.Stretch if column in ('character','status','command') else QHeaderView.ResizeMode.ResizeToContents)
         header.setStretchLastSection(False)
         footer=QHBoxLayout();outer.addLayout(footer)
-        for text,callback in [('Launch Selected',self.launch),('Pause Selected',lambda:self.command('Pause')),('Resume Selected',lambda:self.command('Resume')),('Stop Selected',self.stop),('Trade Mode',lambda:self.command('Trade Mode')),('Open Lockboxes',lambda:self.command('Open Lockboxes')),('Show Selected',self.show)]:
+        for text,callback in [('Launch Selected',self.launch),('Pause Selected',lambda:self.command('Pause')),('Resume Selected',lambda:self.command('Resume')),('Stop Selected',self.stop),('Trade Mode',lambda:self.command('Trade Mode')),('Open Lockboxes',lambda:self.command('Open Lockboxes')),('Show Selected',self.show_bots)]:
             button=QPushButton(text);button.clicked.connect(callback);footer.addWidget(button)
         footer.addStretch()
         self.notice=QLabel(status);self.notice.setWordWrap(True);outer.addWidget(self.notice)
