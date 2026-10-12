@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 import urllib.request
+import urllib.parse
 
 HUB_BUNDLE_SUPPORT = True
 REPOSITORY = 'dasaright/EncounterHub'
@@ -22,7 +23,7 @@ def api(path):
 
 
 def remote_file(path, commit):
-    data = api('contents/' + path + '?ref=' + commit)
+    data = api('contents/' + urllib.parse.quote(urllib.parse.unquote(path),safe='/') + '?ref=' + commit)
     if data.get('encoding') != 'base64':
         raise ValueError('Unexpected GitHub file encoding')
     return base64.b64decode(data['content'])

@@ -41,6 +41,7 @@ def command_action(command, buttons):
 def update_bundle(root=None, commit=None):
     """Install the complete allowlisted launcher bundle, with rollback on failure."""
     import hashlib
+    from urllib.parse import quote
     from hub import api, remote_file, ROOT
     root = ROOT if root is None else Path(root)
     commit = commit or api('git/ref/heads/main')['object']['sha']
@@ -56,7 +57,7 @@ def update_bundle(root=None, commit=None):
         local = root / name
         if local.exists() and hashlib.sha256(local.read_bytes()).hexdigest() == digest:
             continue
-        payload = remote_file(name, commit)
+        payload = remote_file(quote(name,safe="/"), commit)
         if hashlib.sha256(payload).hexdigest() != digest:
             raise ValueError('Bundle hash mismatch: ' + name)
         if name.endswith('.py'): compile(payload, name, 'exec')
