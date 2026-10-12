@@ -97,3 +97,46 @@ class QtDesktop(unittest.TestCase):
         spawn.assert_called_once();w.broker.call.assert_not_called();self.assertTrue(w.restarting)
 
 if __name__=='__main__':unittest.main()
+
+@unittest.skipUnless(sys.platform=='win32','Windows supervisor integration')
+class RealSupervisor(unittest.TestCase):
+    def test_client_exit_reconnect_and_selective_shutdown(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as directory:
+            endpoint=Path(directory)/'endpoint.json'
+            repo=Path(__file__).resolve().parents[1]
+            keeper=subprocess.Popen([sys.executable,'-c','from pathlib import Path;from supervisor import serve;serve(Path('+repr(str(endpoint))+'))'],cwd=repo,creationflags=subprocess.CREATE_NO_WINDOW)
+            unrelated=subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)'],creationflags=subprocess.CREATE_NO_WINDOW)
+            broker=None
+            try:
+                deadline=time.monotonic()+10
+                while not endpoint.exists() and time.monotonic()<deadline:time.sleep(.05)
+                details=json.loads(endpoint.read_text());broker=supervisor.Broker(details)
+                # The first GUI-like client launches bots and then completely exits.
+                program='import json,sys;from supervisor import Broker; b=Broker('+repr(details)+'); print(json.dumps(b.call("launch",exe=sys.executable,character="Live Bot",arguments=["-c","import subprocess,sys,time;subprocess.Popen([sys.executable,\\\"-c\\\",\\\"import time;time.sleep(60)\\\"]);time.sleep(60)"])))'
+                first=subprocess.run([sys.executable,'-c',program],cwd=repo,capture_output=True,text=True,timeout=10)
+                self.assertEqual(first.returncode,0,first.stderr)
+                record=json.loads(first.stdout);identifier=record['identifier']
+                deadline=time.monotonic()+10
+                while len(broker.call('members',identifier=identifier))<2 and time.monotonic()<deadline:time.sleep(.05)
+                replacement=supervisor.Broker(json.loads(endpoint.read_text()))
+                self.assertIsNone(replacement.call('poll',identifier=identifier))
+                self.assertTrue(replacement.call('snapshot')[0]['active'])
+                replacement.call('stopbot',identifier=identifier)
+                deadline=time.monotonic()+10
+                while replacement.call('poll',identifier=identifier) is None and time.monotonic()<deadline:time.sleep(.05)
+                self.assertIsNotNone(replacement.call('poll',identifier=identifier))
+                replacement.call('shutdown',identifier=identifier)
+                deadline=time.monotonic()+10
+                while replacement.call('members',identifier=identifier) and time.monotonic()<deadline:time.sleep(.05)
+                self.assertEqual(replacement.call('members',identifier=identifier),[])
+                self.assertIsNone(unrelated.poll())
+                replacement.call('exit');keeper.wait(timeout=10)
+            finally:
+                if broker and keeper.poll() is None:
+                    try:
+                        for record in broker.call('snapshot'):broker.call('shutdown',identifier=record['identifier'])
+                        broker.call('exit')
+                    except OSError:pass
+                if keeper.poll() is None:keeper.terminate()
+                keeper.wait(timeout=10);unrelated.terminate();unrelated.wait(timeout=10)
