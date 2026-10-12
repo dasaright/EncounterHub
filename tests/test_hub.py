@@ -76,7 +76,7 @@ class Bundles(unittest.TestCase):
         def remote(name,commit):
             self.assertEqual(commit,'pinned')
             from urllib.parse import unquote
-            return json.dumps(self.manifest).encode() if name=='bundle.json' else self.payloads[unquote(name)]
+            return json.dumps(self.manifest).encode() if name in ('bundle.json','desktop-bundle.json') else self.payloads[unquote(name)]
         with patch.object(hub,'api',return_value={'object':{'sha':'pinned'}}),patch.object(hub,'remote_file',side_effect=remote):
             return app_main.update_bundle(self.root)
     def test_full_install_preserves_settings(self):

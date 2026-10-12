@@ -213,7 +213,7 @@ class Desktop(QMainWindow):
             try:
                 from hub import api,remote_file,ROOT
                 import hashlib
-                commit=api('git/ref/heads/main')['object']['sha'];manifest=json.loads(remote_file('bundle.json',commit))
+                commit=api('git/ref/heads/main')['object']['sha'];manifest=json.loads(remote_file('desktop-bundle.json',commit))
                 available=any(not (ROOT/name).exists() or hashlib.sha256((ROOT/name).read_bytes()).hexdigest()!=digest for name,digest in manifest['files'].items())
                 self.events.put(('check',{'commit':commit,'available':available,'message':'Update '+manifest['version']+' is ready. Click Update Now.' if available else 'You are up to date ('+manifest['version']+').'}))
             except Exception as exc:self.events.put(('error','Update check failed: '+str(exc)))

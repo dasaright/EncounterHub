@@ -45,9 +45,9 @@ def update_bundle(root=None, commit=None):
     from hub import api, remote_file, ROOT
     root = ROOT if root is None else Path(root)
     commit = commit or api('git/ref/heads/main')['object']['sha']
-    manifest = json.loads(remote_file('bundle.json', commit))
+    manifest = json.loads(remote_file('desktop-bundle.json', commit))
     required = {'app_main.py', 'hub.py', 'Launch Hub.vbs', 'Launch Hub.cmd', 'update.json'}
-    allowed = required | {'qt_app.py','qt_style.py','supervisor.py','requirements.txt'}
+    allowed = required | {'qt_app.py','qt_style.py','supervisor.py','requirements.txt','bundle.json'}
     if manifest.get('format') != 1 or not required.issubset(manifest.get('files', {})) or not set(manifest.get('files', {})).issubset(allowed):
         raise ValueError('Unsupported launcher bundle')
     payloads = {}
