@@ -29,3 +29,5 @@ Install `requirements.txt` for source development, run `hub.py`, and use `python
 The legacy `bundle.json` remains a five-file migration manifest so 1.x Check for Updates can install the upgraded bootstrap. The native desktop checks `desktop-bundle.json` for the full Qt application.
 
 Newly launched bot windows minimize once startup is confirmed. Show Selected restores them without re-minimizing. Reconnected windows keep their existing state. The per-row Trade button requests Trade Mode for that character, using the same pause-then-trade behavior as the bulk command.
+
+If startup needs attention, the hub looks for an enabled Start button with the correct character selected, sends one recovery Start click, and watches for startup confirmation for up to two minutes. It never substitutes Pause/Resume for Start or retries repeatedly after an unsuccessful recovery. If no usable Start control is available within 30 seconds, it retains the Needs attention status.

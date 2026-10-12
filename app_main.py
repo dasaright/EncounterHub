@@ -12,7 +12,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-VERSION = '2.0.2'
+VERSION = '2.0.3'
 
 
 def command_action(command, buttons):
@@ -97,6 +97,23 @@ def advance_stop(session):
 def minimize_started_bot(native,window,session):
     if session.get('minimize_on_start') and not session.get('minimized'):
         if native.u.ShowWindowAsync(window,6):session['minimized']=True
+
+
+def recover_start(native,name,session,children,buttons,now=None):
+    now=time.monotonic() if now is None else now
+    if session.get('recovery_attempted'):
+        return 'Needs attention; Start recovery did not confirm startup'
+    started=session.setdefault('recovery_search',now)
+    if now-started>30:return 'Needs attention; no usable Start control found'
+    start=buttons.get('Start')
+    if not start:return 'Needs attention; waiting for Start control'
+    # Never click a toggle labelled Pause/Resume or start the wrong character.
+    selected=any(native.kind(c)=='ComboBox' and re.sub(r'^\s*\d+\s*-\s*','',native.text(c))==name for c in children)
+    if not selected:return 'Needs attention; character selection does not match'
+    if native.click(start):
+        session.update(recovery_attempted=True,phase='recovering',deadline=now+120)
+        return 'Recovery Start sent; checking for startup (up to 2 minutes)'
+    return 'Needs attention; Start is disabled or unresponsive'
 
 
 class JobProcess:
@@ -521,10 +538,12 @@ class Hub:
                            (self.native.kind(c)=='Button' and self.native.text(c) in captions)]
         children=s['controls']
         buttons={self.native.text(c):c for c in children if self.native.kind(c)=='Button'}
-        if self.native.title(h)=='Encounter Re:Built - '+name:
-            s['phase']='done';self.report(name,'status','Started (window confirmed)');minimize_started_bot(self.native,h,s);self.sync_options(name,s)
+        if self.native.title(h)=='Encounter Re:Built - '+name and 'Start' not in buttons:
+            recovered=s.get('recovery_attempted',False)
+            s['phase']='done';self.report(name,'status','Recovered (Start confirmed)' if recovered else 'Started (window confirmed)');minimize_started_bot(self.native,h,s);self.sync_options(name,s)
         if s['phase']!='done':
-            if time.monotonic()>s['deadline']:self.report(name,'status','Needs attention; open bot');return
+            if time.monotonic()>s['deadline']:
+                self.report(name,'status',recover_start(self.native,name,s,children,buttons));return
             if s['phase']=='select':
                 for c in children:
                     if self.native.kind(c)!='ComboBox':continue

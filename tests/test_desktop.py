@@ -174,3 +174,31 @@ class MinimizeOnStart(unittest.TestCase):
         native=Mock()
         minimize_started_bot(native,123,{'minimize_on_start':False,'minimized':False})
         native.u.ShowWindowAsync.assert_not_called()
+
+class RecoveryStart(unittest.TestCase):
+    def native(self):
+        native=Mock();native.kind.return_value='ComboBox';native.text.return_value='1 - Char';native.click.return_value=True
+        return native
+    def test_one_attempt_waits_two_minutes(self):
+        from app_main import recover_start
+        native=self.native();session={}
+        status=recover_start(native,'Char',session,[12],{'Start':34},now=100)
+        self.assertIn('Recovery Start sent',status);self.assertEqual(session['deadline'],220)
+        self.assertEqual(session['phase'],'recovering')
+        self.assertIn('did not confirm',recover_start(native,'Char',session,[12],{'Start':34},now=221))
+        native.click.assert_called_once_with(34)
+    def test_pause_resume_are_never_clicked(self):
+        from app_main import recover_start
+        native=self.native()
+        recover_start(native,'Char',{},[12],{'Pause':34,'Resume':56},now=100)
+        native.click.assert_not_called()
+    def test_wrong_character_is_not_started(self):
+        from app_main import recover_start
+        native=self.native();native.text.return_value='Other Char'
+        self.assertIn('does not match',recover_start(native,'Char',{},[12],{'Start':34},now=100))
+        native.click.assert_not_called()
+    def test_disabled_start_does_not_count_as_sent(self):
+        from app_main import recover_start
+        native=self.native();native.click.return_value=False;session={}
+        self.assertIn('disabled',recover_start(native,'Char',session,[12],{'Start':34},now=100))
+        self.assertNotIn('recovery_attempted',session)
