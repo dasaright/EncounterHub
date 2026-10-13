@@ -72,8 +72,8 @@ class QtDesktop(unittest.TestCase):
         self.window.monitor_stop.set();self.window.monitor_worker.join(timeout=5);self.window.restarting=True;self.window.close();self.app.processEvents()
     def test_native_columns_and_action_buttons(self):
         from qt_app import COLUMNS
-        self.assertEqual(self.window.table.columnCount(),11)
-        self.assertEqual(COLUMNS,('check','character','status','command','render','ontop','pause','resume','trade','stop','launch'))
+        self.assertEqual(self.window.table.columnCount(),12)
+        self.assertEqual(COLUMNS,('check','character','status','command','render','ontop','pause','resume','trade','stop','launch','storage'))
         self.window.command=Mock();self.window.launch=Mock();self.window.stop=Mock()
         self.window.row_widgets['Character One']['pause'].click();self.window.command.assert_called_once_with('Pause',['Character One'])
         self.window.command.reset_mock();self.window.row_widgets['Character One']['trade'].click()
@@ -202,3 +202,22 @@ class RecoveryStart(unittest.TestCase):
         native=self.native();native.click.return_value=False;session={}
         self.assertIn('disabled',recover_start(native,'Char',session,[12],{'Start':34},now=100))
         self.assertNotIn('recovery_attempted',session)
+
+class StorageCounter(unittest.TestCase):
+    def test_count_label_is_chosen_instead_of_per_run(self):
+        from app_main import storage_counter_control
+        native=Mock();native.kind.return_value='Static'
+        native.text.side_effect=lambda h:{1:'– Put in Storage',2:'120',3:'2'}[h]
+        native.u.GetDlgCtrlID.side_effect=lambda h:{1:100,2:101,3:102}[h]
+        native.rect.side_effect=lambda h:{1:(21,350,140,370),2:(173,350,325,370),3:(325,350,477,370)}[h]
+        self.assertEqual(storage_counter_control(native,[1,3,2]),2)
+    def test_geometry_fallback_chooses_leftmost_count(self):
+        from app_main import storage_counter_control
+        native=Mock();native.kind.return_value='Static';native.u.GetDlgCtrlID.return_value=0
+        native.text.side_effect=lambda h:{1:'– Put in Storage',2:'1,234',3:'3.2'}[h]
+        native.rect.side_effect=lambda h:{1:(21,350,140,370),2:(173,350,325,370),3:(325,350,477,370)}[h]
+        self.assertEqual(storage_counter_control(native,[1,2,3]),2)
+    def test_missing_stat_is_not_reported_as_zero(self):
+        from app_main import storage_counter_control
+        native=Mock();native.kind.return_value='Static';native.text.return_value='Other statistic'
+        self.assertIsNone(storage_counter_control(native,[1]))

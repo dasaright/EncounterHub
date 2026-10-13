@@ -12,7 +12,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-VERSION = '2.0.3'
+VERSION = '2.0.4'
 
 
 def command_action(command, buttons):
@@ -114,6 +114,25 @@ def recover_start(native,name,session,children,buttons,now=None):
         session.update(recovery_attempted=True,phase='recovering',deadline=now+120)
         return 'Recovery Start sent; checking for startup (up to 2 minutes)'
     return 'Needs attention; Start is disabled or unresponsive'
+
+
+def storage_counter_control(native,children):
+    for anchor in children:
+        if native.kind(anchor)!='Static' or 'put in storage' not in native.text(anchor).lower():continue
+        anchor_id=native.u.GetDlgCtrlID(anchor)
+        rect=native.rect(anchor)
+        candidates=[]
+        for control in children:
+            if control==anchor or native.kind(control)!='Static':continue
+            value=native.text(control).strip().replace(',','')
+            if not value.isdigit():continue
+            # AutoIt creates the Count label immediately after its row caption.
+            if anchor_id>0 and native.u.GetDlgCtrlID(control)==anchor_id+1:return control
+            other=native.rect(control)
+            if rect and other and other[0]>rect[0] and abs(other[1]-rect[1])<=3:
+                candidates.append((other[0],control))
+        if candidates:return min(candidates)[1]
+    return None
 
 
 class JobProcess:
@@ -230,6 +249,8 @@ class Native:
             'GetWindowThreadProcessId': ([W.HWND, ctypes.POINTER(W.DWORD)], W.DWORD),
             'IsWindow': ([W.HWND], W.BOOL),
             'GetWindowTextW': ([W.HWND, W.LPWSTR, ctypes.c_int], ctypes.c_int),
+            'GetWindowRect': ([W.HWND, ctypes.POINTER(W.RECT)], W.BOOL),
+            'GetDlgCtrlID': ([W.HWND], ctypes.c_int),
             'GetClassNameW': ([W.HWND, W.LPWSTR, ctypes.c_int], ctypes.c_int),
             'SendMessageTimeoutW': ([W.HWND, W.UINT, W.WPARAM, W.LPARAM, W.UINT, W.UINT, ctypes.POINTER(ctypes.c_size_t)], W.LPARAM),
             'PostMessageW': ([W.HWND, W.UINT, W.WPARAM, W.LPARAM], W.BOOL),
@@ -247,6 +268,11 @@ class Native:
         ok = self.u.SendMessageTimeoutW(handle, message, len(buffer) if index is None else index,
                                        ctypes.addressof(buffer), 2, 100, ctypes.byref(result))
         return buffer.value if ok and result.value != ctypes.c_size_t(-1).value else ''
+
+    def rect(self,handle):
+        rect=W.RECT()
+        if not self.u.GetWindowRect(handle,ctypes.byref(rect)):return None
+        return (rect.left,rect.top,rect.right,rect.bottom)
 
     def checked(self, handle):
         result=ctypes.c_size_t()
@@ -497,6 +523,21 @@ class Hub:
             if actual is not None:self.report(name,key,'1' if actual else '0')
             self.report(name,'_'+key+'_enabled',enabled and actual is not None and key not in s.get('option_requests',{}))
 
+    def sync_storage(self,name,s):
+        if time.monotonic()<s.get('next_storage',0):return
+        s['next_storage']=time.monotonic()+2
+        window=s.get('window')
+        if not window or not self.native.u.IsWindow(window):
+            window=self.native.window(s['process'].pid)
+        if not window:return
+        control=s.get('storage_control')
+        if not control or not self.native.u.IsWindow(control):
+            control=storage_counter_control(self.native,self.native.children(window))
+            s['storage_control']=control
+        if control:
+            value=self.native.text(control).strip().replace(',','')
+            if value.isdigit():self.report(name,'storage',str(int(value)))
+
     def step(self,name,s):
         if s['stopping']:
             for key in ('render','ontop'):self.report(name,'_'+key+'_enabled',False)
@@ -513,6 +554,7 @@ class Hub:
             self.report(name,'status','Exited')
             if s['pending']:self.report(name,'command','Bot exited; command cancelled');s['pending']=None
             return
+        self.sync_storage(name,s)
         # A running bot with no command needs only a cheap process liveness check.
         if s['phase']=='done':self.sync_options(name,s)
         if s['phase']=='done' and not s['pending']:return

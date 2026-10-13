@@ -21,8 +21,8 @@ try:
 except ImportError:
     STYLE='QWidget {background:#14171c;color:#dce5ef;font-family:"Segoe UI";} QPushButton {background:#202731;border-radius:6px;padding:7px;} QPushButton:hover {background:#2a3741;} QHeaderView::section {background:#162337;padding:7px;} QTableWidget{background:#1b2027;}'
 
-COLUMNS=('check','character','status','command','render','ontop','pause','resume','trade','stop','launch')
-CAPTIONS=('Select','Character','Bot Status','Command','Disable Rendering','Always on Top','Pause','Resume','Trade','Stop','Launch')
+COLUMNS=('check','character','status','command','render','ontop','pause','resume','trade','stop','launch','storage')
+CAPTIONS=('Select','Character','Bot Status','Command','Disable Rendering','Always on Top','Pause','Resume','Trade','Stop','Launch','Put in Storage')
 
 class QtDialogs:
     @staticmethod
@@ -53,6 +53,7 @@ class Desktop(QMainWindow):
     step=engine.Hub.step
     monitor=engine.Hub.monitor
     sync_options=engine.Hub.sync_options
+    sync_storage=engine.Hub.sync_storage
     report=engine.Hub.report
     command=engine.Hub.command
     stop=engine.Hub.stop
@@ -94,7 +95,7 @@ class Desktop(QMainWindow):
         self.resizing_columns=False
         saved=self.settings.get('column_widths',{})
         self.custom_columns=bool(saved)
-        defaults=(60,220,210,245,150,140,82,82,82,82,82)
+        defaults=(60,220,210,245,150,140,82,82,82,82,82,125)
         self.resizing_columns=True
         for index,key in enumerate(COLUMNS):
             width=saved.get(key,defaults[index]) if isinstance(saved,dict) else defaults[index]
@@ -164,7 +165,7 @@ class Desktop(QMainWindow):
     def add_row(self,name):
         if name in self.rows:return
         row=self.table.rowCount();self.table.insertRow(row);self.rows[name]=row
-        self.tree.set(name,'character',name);self.tree.set(name,'status','Ready')
+        self.tree.set(name,'character',name);self.tree.set(name,'status','Ready');self.tree.set(name,'storage','—')
         widgets={}
         for key in ('check','render','ontop'):
             checkbox=QCheckBox();holder=QWidget();layout=QHBoxLayout(holder);layout.setContentsMargins(4,0,4,0);layout.setAlignment(Qt.AlignmentFlag.AlignCenter);layout.addWidget(checkbox)
@@ -222,7 +223,7 @@ class Desktop(QMainWindow):
             try:
                 record=self.broker.call('launch',exe=str(self.exe.resolve()),character=name)
                 self.sessions[name]=self.session(RemoteProcess(self.broker,record['identifier'],record['pid']))
-                self.tree.set(name,'status','Opening bot...');self.tree.set(name,'command','');self.tree.set(name,'pid',record['pid'])
+                self.tree.set(name,'status','Opening bot...');self.tree.set(name,'storage','—');self.tree.set(name,'command','');self.tree.set(name,'pid',record['pid'])
             except OSError as exc:self.tree.set(name,'status',str(exc))
 
     def stop(self,names=None):

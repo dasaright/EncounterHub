@@ -153,7 +153,7 @@ class StopAndMonitoring(unittest.TestCase):
     def test_idle_running_monitor_does_not_read_bot_windows(self):
         from app_main import Hub
         from unittest.mock import Mock
-        h=Hub.__new__(Hub);h.native=Mock();h.report=Mock()
+        h=Hub.__new__(Hub);h.native=Mock();h.report=Mock();h.sync_storage=Mock()
         process=Mock();process.poll.return_value=None
         session={'process':process,'stopping':False,'next_games':float('inf'),'phase':'done','pending':None}
         h.step('character',session)
@@ -171,7 +171,7 @@ class CheckboxSync(unittest.TestCase):
     def setup_hub(self):
         from app_main import Hub
         from unittest.mock import Mock
-        h=Hub.__new__(Hub);h.native=Mock();h.report=Mock();h.native.u.IsWindowEnabled.return_value=True
+        h=Hub.__new__(Hub);h.native=Mock();h.report=Mock();h.sync_storage=Mock();h.native.u.IsWindowEnabled.return_value=True
         session={'next_options':0,'options':{'render':10},'option_requests':{},'option_sent':set()}
         return h,session
     def test_external_change_is_reflected_without_click(self):

@@ -31,3 +31,5 @@ The legacy `bundle.json` remains a five-file migration manifest so 1.x Check for
 Newly launched bot windows minimize once startup is confirmed. Show Selected restores them without re-minimizing. Reconnected windows keep their existing state. The per-row Trade button requests Trade Mode for that character, using the same pause-then-trade behavior as the bulk command.
 
 If startup needs attention, the hub looks for an enabled Start button with the correct character selected, sends one recovery Start click, and watches for startup confirmation for up to two minutes. It never substitutes Pause/Resume for Start or retries repeatedly after an unsuccessful recovery. If no usable Start control is available within 30 seconds, it retains the Needs attention status.
+
+The rightmost Put in Storage column mirrors the bot’s Statistics-tab count of golden items put in storage (not Count/Run). It refreshes every two seconds through the background worker, including for minimized bot windows. Unavailable counts display a dash; the final read remains visible after stopping, and a new launch starts a new displayed session.
