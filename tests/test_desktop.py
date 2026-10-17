@@ -70,6 +70,19 @@ class QtDesktop(unittest.TestCase):
         self.addCleanup(self.cleanup)
     def cleanup(self):
         self.window.monitor_stop.set();self.window.monitor_worker.join(timeout=5);self.window.restarting=True;self.window.close();self.app.processEvents()
+    def test_icon_has_full_size_artwork_and_updates_external_icon(self):
+        import base64
+        from qt_app import app_icon,write_app_icon,APP_ICON_DATA
+        icon=app_icon()
+        self.assertEqual(icon.pixmap(256,256).width(),256)
+        self.assertFalse(self.window.windowIcon().isNull())
+        self.assertFalse(self.window.brand_icon.pixmap().isNull())
+        root=Path(self.temp.name)
+        (root/'taco.ico').write_bytes(b'old icon')
+        target=write_app_icon(root)
+        self.assertEqual(target.read_bytes(),base64.b64decode(APP_ICON_DATA))
+        self.assertEqual(target.read_bytes(),(Path(__file__).resolve().parents[1]/'assets/taco-dagger.ico').read_bytes())
+
     def test_native_columns_and_action_buttons(self):
         from qt_app import COLUMNS
         self.assertEqual(self.window.table.columnCount(),12)

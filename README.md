@@ -33,3 +33,9 @@ Newly launched bot windows minimize once startup is confirmed. Show Selected res
 If startup needs attention, the hub looks for an enabled Start button with the correct character selected, sends one recovery Start click, and watches for startup confirmation for up to two minutes. It never substitutes Pause/Resume for Start or retries repeatedly after an unsuccessful recovery. If no usable Start control is available within 30 seconds, it retains the Needs attention status.
 
 The rightmost Put in Storage column mirrors the bot’s Statistics-tab count of golden items put in storage (not Count/Run). It refreshes every two seconds through the background worker, including for minimized bot windows. Unavailable counts display a dash; the final read remains visible after stopping, and a new launch starts a new displayed session.
+
+## Icon update (2.0.5)
+
+Encounter Hub uses its own taco pierced by an anime-style dagger icon. The window, title artwork, taskbar, new desktop shortcuts and newly built executable share the same image. Use Check for Updates, then Update Now to install the desktop artwork and restart the hub while active bots continue running. Existing shortcuts referencing the old executable icon can be recreated with Create Desktop Shortcut and pinned again. The release executable embeds the new icon; earlier executables retain their original embedded file icon until replaced with the new executable build.
+
+Source artwork: assets/taco-dagger.png and assets/taco-dagger.ico. The ICO is also embedded in qt_app.py so existing updater allowlists can deliver it in one update. Generated with the built-in image tool from TacoBot's current taco: preserve the taco identity and add an anime-style fantasy dagger piercing through it, crisp app-icon composition, transparent background, no text or gore.
