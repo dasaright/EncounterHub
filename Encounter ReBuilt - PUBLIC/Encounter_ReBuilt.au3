@@ -3682,6 +3682,7 @@ Func Main()
 
             Case $GC_I_BOTSTATE_IDLE
 				; Idle
+                Supply_CheckManualRequest()
                 If $g_b_ResumeRequested Then
                     $g_b_ResumeRequested = False
                     GUI_SetBotState($GC_I_BOTSTATE_RUN)
