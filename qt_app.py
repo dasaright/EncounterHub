@@ -2174,6 +2174,7 @@ class Desktop(QMainWindow):
         # Qt clicked passes a bool: interpret it as bulk launch.
         if isinstance(names,bool):names=None
         for name in self.selected() if names is None else names:
+            self.paused_accounts.discard(name);self.update_buycons_button(name)
             s=self.sessions.get(name)
             if s and (s['stopping'] or s['process'].members()):continue
             try:
@@ -2184,6 +2185,9 @@ class Desktop(QMainWindow):
 
     def stop(self,names=None):
         if isinstance(names,bool):names=None
+        targets=self.selected() if names is None else names
+        for name in targets:
+            self.paused_accounts.discard(name);self.update_buycons_button(name)
         return engine.Hub.stop(self,names)
 
     def tick(self):
