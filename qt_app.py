@@ -2029,8 +2029,8 @@ class Desktop(QMainWindow):
             'MinimumEctoSellPrice':str(cfg['minimum_ecto_sell_price'])}
         for character,profiles in self.account_supply_profiles.items():
             ini['Character:'+character]={
-                'AutomaticProfile':profiles.get('automatic_profile','Full Conset'),
-                'ManualProfile':profiles.get('manual_profile','Full Conset')}
+                'AutomaticProfile':profiles.get('automatic_profile') if profiles.get('automatic_profile') in PROFILES else 'Full Conset',
+                'ManualProfile':profiles.get('manual_profile') if profiles.get('manual_profile') in PROFILES else 'Full Conset'}
         folder=self.supply_config_folder()
         temp=folder/'supply.ini.tmp'
         with temp.open('w',encoding='utf-8') as handle:ini.write(handle)
@@ -2221,6 +2221,7 @@ class Desktop(QMainWindow):
 
     def check_update(self):
         if self.busy_update:return
+        self.update_available=False;self.update_commit=None;self.update_button.setEnabled(False)
         self.busy_update=True;self.check_button.setEnabled(False);self.notice.setText('Checking GitHub for updates...')
         def work():
             try:
