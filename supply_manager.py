@@ -1,7 +1,7 @@
 """Conset supply configuration, price model, and EncounterHub dialog.
 
-Game-side trading is deliberately not automated here: Encounter ReBuilt currently
-exposes pause/resume controls but no supported trader, bank, or inventory API.
+The desktop stores shared market settings and per-character crafting profiles;
+in-game purchases and crafting are executed by the bot-side SupplyManager.au3.
 """
 from copy import deepcopy
 import math
