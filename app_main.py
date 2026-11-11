@@ -12,7 +12,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-VERSION = '2.0.5'
+VERSION = '2.0.6'
 
 
 def command_action(command, buttons):
@@ -47,7 +47,7 @@ def update_bundle(root=None, commit=None):
     commit = commit or api('git/ref/heads/main')['object']['sha']
     manifest = json.loads(remote_file('desktop-bundle.json', commit))
     required = {'app_main.py', 'hub.py', 'Launch Hub.vbs', 'Launch Hub.cmd', 'update.json'}
-    allowed = required | {'qt_app.py','qt_style.py','supervisor.py','requirements.txt','bundle.json'}
+    allowed = required | {'qt_app.py','qt_style.py','supervisor.py','supply_manager.py','requirements.txt','bundle.json'}
     if manifest.get('format') != 1 or not required.issubset(manifest.get('files', {})) or not set(manifest.get('files', {})).issubset(allowed):
         raise ValueError('Unsupported launcher bundle')
     payloads = {}
