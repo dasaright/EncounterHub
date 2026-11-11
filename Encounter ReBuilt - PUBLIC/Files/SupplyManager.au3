@@ -3,10 +3,10 @@ Global Const $GC_I_SUPPLY_EMBARK = 857
 Global Const $GC_I_SUPPLY_RES_SCROLL = 26501
 Global $g_b_SupplyBusy = False
 Func Supply_ConfigPath()
-    Return @ScriptDir & "\\Config\\supply.ini"
+    Return @ScriptDir & "\Config\supply.ini"
 EndFunc
 Func Supply_RequestPath()
-    Return @ScriptDir & "\\Config\\supply.manual"
+    Return @ScriptDir & "\Config\supply.manual"
 EndFunc
 Func Supply_NPC($name)
     Local $agents = Agent_GetAgentArray()
