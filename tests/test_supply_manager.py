@@ -63,6 +63,7 @@ class SupplyPricingTests(unittest.TestCase):
     def test_minimum_ecto_sale_price(self):
         self.assertTrue(may_sell_ectoplasm(7000, 7000))
         self.assertFalse(may_sell_ectoplasm(6999, 7000))
+        self.assertFalse(may_sell_ectoplasm(0, 0))
 
     def test_bank_threshold(self):
         self.assertFalse(automatic_replenishment_due(799999, 800000))
