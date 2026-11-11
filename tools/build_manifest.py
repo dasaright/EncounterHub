@@ -10,5 +10,5 @@ version=next(ast.literal_eval(n.value) for n in module.body if isinstance(n,ast.
 
 legacy=['app_main.py','hub.py','Launch Hub.vbs','Launch Hub.cmd','update.json']
 (root/'bundle.json').write_text(json.dumps({'format':1,'version':version,'files':{p:hashlib.sha256((root/p).read_bytes()).hexdigest() for p in legacy}},indent=2)+'\n')
-paths=legacy+['qt_app.py','qt_style.py','supervisor.py','requirements.txt','bundle.json']
+paths=legacy+['qt_app.py','qt_style.py','supervisor.py','supply_manager.py','requirements.txt','bundle.json']
 (root/'desktop-bundle.json').write_text(json.dumps({'format':1,'version':version,'files':{p:hashlib.sha256((root/p).read_bytes()).hexdigest() for p in paths}},indent=2)+'\n')
