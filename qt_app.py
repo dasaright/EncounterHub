@@ -1997,13 +1997,31 @@ class Desktop(QMainWindow):
         shortcut=QAction('Create Desktop Shortcut',self);shortcut.triggered.connect(self.shortcut);menu.addAction(shortcut)
 
     def open_supply_manager(self):
-        dialog=SupplyDialog(self,self.settings.get('supply',{}),self.save_supply_config)
+        dialog=SupplyDialog(self,self.settings.get('supply',{}),self.save_supply_config,self.request_supply_purchase)
         dialog.exec()
 
     def save_supply_config(self,config):
         self.settings['supply']=normalize_config(config)
         self.save()
-        self.notice.setText('Supply Manager settings saved. In-game execution awaits the bot trader/bank integration.')
+        cfg=self.settings['supply']
+        folder=self.exe.parent/'Config'
+        folder.mkdir(parents=True,exist_ok=True)
+        import configparser
+        ini=configparser.ConfigParser()
+        ini['Supply']={'AutomaticEnabled':str(cfg['automatic_enabled']).lower(),
+            'BankGoldThreshold':str(cfg['bank_gold_threshold']),
+            'AutomaticProfile':cfg['automatic_profile'],'ManualProfile':cfg['manual_profile'],
+            'MinimumEctoSellPrice':str(cfg['minimum_ecto_sell_price'])}
+        temp=folder/'supply.ini.tmp'
+        with temp.open('w',encoding='utf-8') as handle: ini.write(handle)
+        os.replace(temp,folder/'supply.ini')
+        self.notice.setText('Supply Manager settings saved to the selected bot folder.')
+
+    def request_supply_purchase(self):
+        folder=self.exe.parent/'Config'
+        folder.mkdir(parents=True,exist_ok=True)
+        (folder/'supply.manual').write_text('manual',encoding='ascii')
+        self.notice.setText('Manual supply purchase queued for after the current run.')
 
     def minimum_column(self,index):
         if COLUMNS[index] in ('character','status','command'):return 100

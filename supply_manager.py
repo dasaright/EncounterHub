@@ -185,12 +185,13 @@ if QDialog is not None:
     class SupplyDialog(QDialog):
         """Configuration and transparent cost calculator; no fake game execution."""
 
-        def __init__(self, parent, config=None, on_save=None):
+        def __init__(self, parent, config=None, on_save=None, on_manual=None):
             super().__init__(parent)
             self.setWindowTitle("EncounterHub — Supply Manager")
             self.setMinimumWidth(650)
             self.config = normalize_config(config)
             self.on_save = on_save
+            self.on_manual = on_manual
             root = QVBoxLayout(self)
 
             intro = QLabel(
@@ -277,9 +278,12 @@ if QDialog is not None:
             buttons.addStretch()
             save = QPushButton("Save Settings")
             save.clicked.connect(self.save_settings)
+            buy_now = QPushButton("Buy Now")
+            buy_now.clicked.connect(self.buy_now)
             close = QPushButton("Close")
             close.clicked.connect(self.reject)
             buttons.addWidget(save)
+            buttons.addWidget(buy_now)
             buttons.addWidget(close)
             root.addLayout(buttons)
 
@@ -336,6 +340,14 @@ if QDialog is not None:
             if self.on_save:
                 self.on_save(self.config)
             self.accept()
+
+        def buy_now(self):
+            self.config = self.current_config()
+            if self.on_save:
+                self.on_save(self.config)
+            if self.on_manual:
+                self.on_manual()
+            self.status.setText("Manual purchase queued. The bot will start after its current run finishes.")
 else:
     class SupplyDialog:
         def __init__(self, *args, **kwargs):

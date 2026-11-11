@@ -6,3 +6,4 @@
 #include "Launch.au3"
 #include "Pathing.au3"
 #include "Security.au3"
+#include "SupplyManager.au3"
