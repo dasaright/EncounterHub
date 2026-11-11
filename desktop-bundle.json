@@ -9,7 +9,7 @@
     "qt_app.py": "d3fc3c02f98dc7781ed4862b31721f1d4a2b78aebed04f359aa146004e7ad775",
     "qt_style.py": "15c6d7553a29550f9403a1ae147138b0e07f424e0d3c9ef43a169d2988400571",
     "supervisor.py": "cbd2a7ca0883008a23b240cef333c896b5ca2a97d0055ce3fc6e73979cdef859",
-    "supply_manager.py": "1b87dddb12b5118ce71de9a83e186ab98d1def698f207fcae36299a8da00d7e2",
+    "supply_manager.py": "efbd747ef5616c1ec1d69b7dd322ed445371f9b5b4944fae015a46d905e5ee10",
     "requirements.txt": "a93fd1c906b2743d5f662a1788e76053e307c523dcd664353403fa16f62de765",
     "bundle.json": "e92af26574481b052a62257143da68c4bc99c095f63c430c9d8917bd785ca9d4",
     "update.json": "3a2456f90b773ac6fb8957e385b2f9515fa04a354aac6b5de2b5bf7f7562a5b7"
