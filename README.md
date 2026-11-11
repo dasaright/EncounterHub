@@ -10,7 +10,7 @@ Existing script installations migrate to the executable automatically after upda
 
 ## Controls
 
-Columns: Select, Character, Bot Status, Command, Disable Rendering, Always on Top, Pause, Resume, Trade, Stop, Launch. Qt lays out cell controls directly; All column borders can be dragged. Custom widths are saved and remain fixed when the window resizes; horizontal scrolling preserves space at narrow sizes. Fit Columns resets the layout to fit the window and restores automatic sizing until you manually drag a border again. Horizontal scrolling preserves controls at narrow window sizes. Both checkbox columns synchronize with the actual bot and respect disabled bot controls. Row actions do not change bulk selections.
+Columns: Select, Character, Bot Status, Command, Disable Rendering, Always on Top, Pause, Resume, Trade, Stop, Launch, Buy Cons, Automatically Craft, Manually Craft, Put in Storage. Buy Cons is enabled only after that character is paused; it queues the manual supply routine for that character. The two crafting dropdowns are saved independently per character and default to Full Conset. Qt lays out cell controls directly; all column borders can be dragged. Custom widths are saved and remain fixed when the window resizes; horizontal scrolling preserves space at narrow sizes. Fit Columns resets the layout to fit the window and restores automatic sizing until you manually drag a border again. Horizontal scrolling preserves controls at narrow window sizes. Both checkbox columns synchronize with the actual bot and respect disabled bot controls. Row actions do not change bulk selections.
 
 Stop waits for that bot executable to exit, then closes its owned game clients. Normal Close closes all supervisor-owned bot/game sessions. Windows job objects restrict shutdown to tracked descendants; unrelated clients are not matched by name or PID.
 
@@ -21,6 +21,11 @@ Stop waits for that bot executable to exit, then closes its owned game clients. 
 If the GUI unexpectedly exits, reopen the executable and it reconnects to the supervisor's active sessions. It does not claim or close unrelated manually launched Guild Wars clients. The local supervisor uses an authenticated loopback socket and stores its endpoint in `%LOCALAPPDATA%\EncounterHub\supervisor.json`. Do not manually delete that file while sessions are running.
 
 The first migration from 1.x requires closing the old hub once; its old ownership model cannot preserve jobs across a restart. Subsequent 2.x Update Now restarts preserve bots. The supervisor keeps its running version until normal Close stops all jobs; the next launch starts the updated supervisor.
+
+
+## Conset Supply Manager
+
+The Supply Manager window holds shared replenishment thresholds and market-price assumptions. Each character row has its own **Automatically Craft** and **Manually Craft** profile selectors; both default to Full Conset and save independently. **Buy Cons** is available only while that character is paused and starts its manual supply routine without resuming the farming loop. The bot polls that character's request while idle, so separate characters do not consume one another's requests.
 
 ## Development
 
