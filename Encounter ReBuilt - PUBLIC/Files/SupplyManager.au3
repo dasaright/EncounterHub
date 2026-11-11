@@ -209,9 +209,9 @@ Func Supply_Run($manual)
         Local $threshold=Number(IniRead(Supply_ConfigPath(),"Supply","BankGoldThreshold","800000"))
         Local $bank=Item_GetInventoryInfo("GoldStorage")
         If $bank>=$threshold Then
-            Local $withdraw=100000
-            If $bank<$withdraw Then $withdraw=$bank
-            Item_WithdrawGold($withdraw)
+            Local $withdraw=100000-Item_GetInventoryInfo("GoldCharacter")
+            If $withdraw>$bank Then $withdraw=$bank
+            If $withdraw>0 Then Item_WithdrawGold($withdraw)
             Sleep(500)
             Supply_Produce($profile)
         EndIf
