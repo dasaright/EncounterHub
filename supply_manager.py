@@ -196,8 +196,7 @@ if QDialog is not None:
 
             intro = QLabel(
                 "Configure automatic replenishment and manual bulk production. "
-                "Trader prices below are editable observations until the bot-side "
-                "trader bridge is connected."
+                "Buy Now queues a manual run after the current farming run finishes."
             )
             intro.setWordWrap(True)
             root.addWidget(intro)
@@ -220,7 +219,7 @@ if QDialog is not None:
             self.min_ecto.setValue(self.config["minimum_ecto_sell_price"])
             self.auto_enabled = QComboBox()
             self.auto_enabled.addItem("Disabled", False)
-            self.auto_enabled.addItem("Enabled (pending bot integration)", True)
+            self.auto_enabled.addItem("Enabled", True)
             self.auto_enabled.setCurrentIndex(1 if self.config["automatic_enabled"] else 0)
             form.addRow("Automatic production profile", self.auto_profile)
             form.addRow("Manual bulk profile", self.manual_profile)
@@ -267,9 +266,8 @@ if QDialog is not None:
             root.addWidget(costs_box)
 
             self.status = QLabel(
-                "Execution is not enabled yet: the current Encounter ReBuilt interface "
-                "does not expose bank-gold, inventory, or trader commands. Settings and "
-                "price calculations are saved locally; no in-game actions will be sent."
+                "Buy Now queues a manual purchase. Automatic replenishment checks bank gold "
+                "after each completed run when enabled. In-game results still need testing."
             )
             self.status.setWordWrap(True)
             root.addWidget(self.status)

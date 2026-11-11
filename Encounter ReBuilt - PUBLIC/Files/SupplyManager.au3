@@ -162,7 +162,7 @@ Func Supply_ManualConsetOK()
     Next
     If $ectoID=0 Or Not Supply_Talk("Argus") Then Return False
     Local $ecto=Supply_QuoteSell($ectoID)
-    Local $cost=10*$dust+5*$feathers+5*$bones+5*$iron+750
+    Local $cost=10*$dust+5*$feathers+5*$bones+10*$iron+750
     AddOns_Out("[SUPPLY] Full Conset estimate "&$cost&"g vs ecto "&$ecto&"g")
     Return $ecto>0 And $cost<=($ecto*0.8)
 EndFunc
@@ -193,6 +193,7 @@ Func Supply_Run($manual)
     $g_i_BotState=$GC_I_BOTSTATE_IDLE
     AddOns_Out("[SUPPLY] Travelling to Embark Beach (American district)")
     If Not Map_TravelTo($GC_I_SUPPLY_EMBARK,0,0,0,True) Then
+        If $oldState=$GC_I_BOTSTATE_RUN Then $g_i_BotState=$GC_I_BOTSTATE_RUN
         $g_b_SupplyBusy=False
         Return False
     EndIf
