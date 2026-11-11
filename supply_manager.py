@@ -153,7 +153,7 @@ def meets_manual_conset_value_limit(config):
 
 
 def may_sell_ectoplasm(current_sell_price, minimum_sell_price):
-    return int(current_sell_price) >= int(minimum_sell_price)
+    return int(current_sell_price) > 0 and int(current_sell_price) >= int(minimum_sell_price)
 
 
 def automatic_replenishment_due(bank_gold, threshold):
