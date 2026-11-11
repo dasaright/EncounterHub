@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBo
     QCheckBox,QTableWidget,QTableWidgetItem,QHeaderView,QAbstractItemView,QFileDialog,QMessageBox)
 import app_main as engine
 from supervisor import ensure, RemoteProcess, command_line
+from supply_manager import SupplyDialog, normalize_config
 
 # TacoBot's exact current desktop stylesheet, committed in this repo.
 try:
@@ -1960,6 +1961,7 @@ class Desktop(QMainWindow):
         toolbar=QHBoxLayout();outer.addLayout(toolbar)
         for text,callback in [('Choose Bot...',self.choose),('Select All',lambda:self.select_all(True)),('Clear Selection',lambda:self.select_all(False))]:
             button=QPushButton(text);button.clicked.connect(callback);toolbar.addWidget(button)
+        self.supply_button=QPushButton('Supply Manager');self.supply_button.clicked.connect(self.open_supply_manager);toolbar.addWidget(self.supply_button)
         toolbar.addStretch();self.path_label=QLabel(str(self.exe));self.path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse);toolbar.addWidget(self.path_label)
         self.table=QTableWidget(0,len(COLUMNS));self.table.setHorizontalHeaderLabels(CAPTIONS);self.table.setAlternatingRowColors(True)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
@@ -1993,6 +1995,15 @@ class Desktop(QMainWindow):
         if start_supervisor and not self.exe.is_file():QTimer.singleShot(0,self.choose)
         menu=self.menuBar().addMenu('Application')
         shortcut=QAction('Create Desktop Shortcut',self);shortcut.triggered.connect(self.shortcut);menu.addAction(shortcut)
+
+    def open_supply_manager(self):
+        dialog=SupplyDialog(self,self.settings.get('supply',{}),self.save_supply_config)
+        dialog.exec()
+
+    def save_supply_config(self,config):
+        self.settings['supply']=normalize_config(config)
+        self.save()
+        self.notice.setText('Supply Manager settings saved. In-game execution awaits the bot trader/bank integration.')
 
     def minimum_column(self,index):
         if COLUMNS[index] in ('character','status','command'):return 100
