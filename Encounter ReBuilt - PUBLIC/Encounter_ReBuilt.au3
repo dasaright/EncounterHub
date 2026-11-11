@@ -3655,6 +3655,7 @@ Func Main()
 			Case $GC_I_BOTSTATE_RUN
 				Quest18()
 				GUI_UpdateStatistics()
+				Supply_CheckRequests()
 				If $g_b_PauseRequested Then
 					$g_b_PauseRequested = False
 					GUI_SetBotState($GC_I_BOTSTATE_IDLE)
