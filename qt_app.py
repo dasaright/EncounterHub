@@ -2107,6 +2107,7 @@ class Desktop(QMainWindow):
         except OSError:names=[]
         self.table.setRowCount(0);self.rows.clear();self.row_widgets.clear()
         for name in names:self.add_row(name)
+        self.write_supply_ini()
 
     def add_row(self,name):
         if name in self.rows:return
