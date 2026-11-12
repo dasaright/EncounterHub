@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import hub
@@ -28,7 +28,7 @@ class Updates(unittest.TestCase):
     def test_api_uses_verified_certifi_ca_bundle(self):
         import ssl
         from unittest.mock import Mock
-        response=Mock();response.__enter__.return_value=response;response.read.return_value=b'{}'
+        response=MagicMock();response.read.return_value=b'{}'
         with patch.object(hub.urllib.request,'urlopen',return_value=response) as urlopen:
             self.assertEqual(hub.api('rate_limit'),{})
         context=urlopen.call_args.kwargs['context']
