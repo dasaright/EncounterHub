@@ -1233,7 +1233,7 @@ Func GUI_BotStateRender()
     EndSwitch
 
     If $g_i_BotState = $GC_I_BOTSTATE_RUN And $g_b_PauseRequested Then
-        $l_s_StartLabel = "Waiting for pause..."
+        $l_s_StartLabel = "Force pause now"
         $l_i_RenderingState = $GUI_ENABLE
 
     ElseIf $g_i_BotState <> $GC_I_BOTSTATE_RUN And $g_b_ResumeRequested Then
@@ -1359,8 +1359,13 @@ EndFunc
 Func GUI_Main_OnStart()
     ; Running → request pause (do not interrupt current Quest18)
     If $g_b_BotInitialized And GUI_BotIsRunning() Then
-        $g_b_PauseRequested = True
-        AddOns_Out("[INFO] Will pause after this run")
+        If $g_b_PauseRequested Then
+            $g_b_ForcePauseRequested = True
+            AddOns_Out("[WARN] Force pause requested; will abort the current run and return to Kaineng Center")
+        Else
+            $g_b_PauseRequested = True
+            AddOns_Out("[INFO] Will pause after this run")
+        EndIf
         GUI_BotStateRender()
         Return
     EndIf
