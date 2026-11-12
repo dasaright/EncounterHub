@@ -2209,7 +2209,7 @@ class Desktop(QMainWindow):
                     if column=='command':
                         pause_button=self.row_widgets.get(name,{}).get('pause')
                         if pause_button:
-                            if value in ('Pausing after current run','Waiting for current run to finish','Force pause requested','Force pause now sent'):
+                            if value in ('Pausing after current run','Waiting for current run to finish','Force pause requested','Force pause now sent','Force pause in progress'):
                                 pause_button.setText('Force pause now')
                             elif value in ('Paused','Running','Resumed','Command timed out'):
                                 pause_button.setText('Pause')
