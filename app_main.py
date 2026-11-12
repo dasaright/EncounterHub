@@ -13,7 +13,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-VERSION = '2.1.1'
+VERSION = '2.1.2'
 
 
 def command_action(command, buttons):
