@@ -2,10 +2,10 @@
   "format": 1,
   "version": "2.1.0",
   "files": {
-    "app_main.py": "b390cd4eefbd10598d0f44d696a2f8f750ea52592c9bce1c889f9c89fca4b63d",
-    "hub.py": "55a03bc31432e6e785d8d50fa72776ca871f71eceb86ed0d2fc6eb9a73c7a81c",
-    "Launch Hub.vbs": "af63f551350e43648b46cf0cadb64b18c4673ff87139185825477164db4b306f",
-    "Launch Hub.cmd": "0279557dbdffc21832440d5b7396efac5d4eda7f25f8b77a9467bb6aad526238",
-    "update.json": "e7f8666dde697a5103696d4f6d4635c19c5e4d24f94d676ed1e830ab919e3b20"
+    "app_main.py": "334ca0bddfb82d64eca52728048db71fe67c9abf782f159578724e66be8c9838",
+    "hub.py": "921cc738853f54f50eb7e6c4dda6bd512e47435e335d0cf4f33504d8e44ae42c",
+    "Launch Hub.vbs": "df0e58b1a789a202a386345e9a1352f876f3803f7183e3acec88e4ec7960082e",
+    "Launch Hub.cmd": "5f81b6ec2091ca8d00609b484ddbc4c0e0cb906691658678ee4075493362061d",
+    "update.json": "be2109509f6e30952d73921fdeed0b4d588a443fd6bacbca190c59fa3471bbd4"
   }
 }
