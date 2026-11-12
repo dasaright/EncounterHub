@@ -12,7 +12,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-VERSION = '2.0.8'
+VERSION = '2.0.9'
 
 
 def command_action(command, buttons):
@@ -24,6 +24,8 @@ def command_action(command, buttons):
     active = {'Trade Mode': 'Stop Trade Mode', 'Open Lockboxes': 'Stop Opening'}
     if command in active and active[command] in buttons:
         return None, 'Already in ' + command, True
+    if command == 'Pause' and 'Force pause now' in buttons:
+        return 'Force pause now', 'Force pause requested', False
     if 'Pause' in buttons:
         return 'Pause', 'Pausing after current run', False
     if 'Waiting for pause...' in buttons:
@@ -567,7 +569,7 @@ class Hub:
         if s['controls'] is None:
             all_children=self.native.children(h)
             # Cache only the three command buttons and combo boxes.
-            captions={'Start','Starting bot...','Pause','Resume','Waiting for pause...',
+            captions={'Start','Starting bot...','Pause','Resume','Waiting for pause...','Force pause now',
                       'Waiting to resume...','Waiting for restart...','Open Lockboxes',
                       'Stop Opening','Trade Mode','Stop Trade Mode'}
             s['options']={}
