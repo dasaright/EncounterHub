@@ -1,11 +1,11 @@
 {
   "format": 1,
-  "version": "2.0.9",
+  "version": "2.1.0",
   "files": {
-    "app_main.py": "0d45510a046a8660b81b14ec326ddf8aceb89cacc3c1d95df7fa34ce9b91a1e1",
-    "hub.py": "db5850f8e1fd8f3c90af92d391755007e78d54fd3b7da37a419c41d2985e6565",
+    "app_main.py": "8ada315fb778b9bbadac1b797d84db7080f5deeb1a058ecfeed0a624e5783c45",
+    "hub.py": "33ae2e9506743509292c4ba2ed036ca98f5f8de5dc75210be41f447bfde1c1b9",
     "Launch Hub.vbs": "df0e58b1a789a202a386345e9a1352f876f3803f7183e3acec88e4ec7960082e",
     "Launch Hub.cmd": "5f81b6ec2091ca8d00609b484ddbc4c0e0cb906691658678ee4075493362061d",
-    "update.json": "4a191250dbb3d9a55508e1af2da9495b840dde2c654906b0c7514a6dc92d8840"
+    "update.json": "d2c9a6b1b5bf2bf1d1c79649573a12e5609faebcd737307afee5909087bbb2ae"
   }
 }
