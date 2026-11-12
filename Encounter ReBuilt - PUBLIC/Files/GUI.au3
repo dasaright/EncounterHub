@@ -1358,11 +1358,15 @@ EndFunc
 ;                  GUI_StartBot, EnableWinEventHook, GUICtrlRead, GUICtrlSetData, GUICtrlSetState, WinSetTitle
 ; ===============================================================================================================================
 Func GUI_Main_OnStart()
-    ; Running → request pause (do not interrupt current Quest18)
+    ; Running → request normal pause, or immediately force the bot into IDLE.
     If $g_b_BotInitialized And GUI_BotIsRunning() Then
         If $g_b_PauseRequested Then
             $g_b_ForcePauseRequested = True
-            AddOns_Out("[WARN] Force pause requested; will abort the current run and return to Kaineng Center")
+            $g_b_PauseRequested = False
+            ; Do not call GUI_SetBotState here: GUI_EnterPause performs inventory
+            ; cleanup, which can interfere with the manual Conset supply routine.
+            $g_i_BotState = $GC_I_BOTSTATE_IDLE
+            AddOns_Out("[WARN] Force pause activated; stopping the current run")
         Else
             $g_b_PauseRequested = True
             AddOns_Out("[INFO] Will pause after this run")

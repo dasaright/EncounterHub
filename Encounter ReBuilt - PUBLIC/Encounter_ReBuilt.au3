@@ -2357,11 +2357,8 @@ EndFunc   ;==>CanContinue
 ; ===============================================================================================================================
 Func Quest18_ForcePauseReturn()
     If Not $g_b_ForcePauseRequested Then Return False
-    AddOns_Out("[INFO] Force pause: aborting remaining run steps")
-    If Map_GetMapID() <> $GC_I_MAP_ID_OUTPOST Then
-        AddOns_Out("[INFO] Force pause: travelling to Kaineng Center")
-        If Not HeartbeatTravel($GC_I_MAP_ID_OUTPOST) Then Return False
-    EndIf
+    ; Force pause is an immediate stop, not a request to travel or finish the run.
+    ; The main loop will settle in IDLE after the current heartbeat/action returns.
     Return True
 EndFunc
 
@@ -3708,14 +3705,10 @@ Func Main()
 			Case $GC_I_BOTSTATE_RUN
 				Quest18()
 				If $g_b_ForcePauseRequested Then
-					If Map_GetMapID() = $GC_I_MAP_ID_OUTPOST Or HeartbeatTravel($GC_I_MAP_ID_OUTPOST) Then
-						$g_b_ForcePauseRequested = False
-						$g_b_PauseRequested = False
-						AddOns_Out("[INFO] Force pause complete; safely returned to Kaineng Center")
-						GUI_SetBotState($GC_I_BOTSTATE_IDLE)
-					Else
-						AddOns_Out("[WARN] Force pause is waiting for a successful return to Kaineng Center")
-					EndIf
+					$g_b_ForcePauseRequested = False
+					$g_b_PauseRequested = False
+					If GUI_GetBotState() <> $GC_I_BOTSTATE_IDLE Then GUI_SetBotState($GC_I_BOTSTATE_IDLE)
+					AddOns_Out("[INFO] Force pause complete; bot is idle")
 					ContinueLoop
 				EndIf
 				GUI_UpdateStatistics()
