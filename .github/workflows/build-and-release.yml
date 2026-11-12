@@ -66,6 +66,7 @@ jobs:
         if: steps.version.outputs.publish == 'true'
         shell: pwsh
         run: |
+          python -c "from qt_app import write_app_icon; write_app_icon('.')"
           pyinstaller --noconfirm --clean --windowed --onedir --name EncounterHub --icon taco.ico --collect-all PySide6 --collect-all shiboken6 --hidden-import certifi hub.py
           New-Item -ItemType Directory -Force "dist/EncounterHub/Encounter ReBuilt" | Out-Null
           New-Item -ItemType Directory -Force "dist/EncounterHub/_internal" | Out-Null
