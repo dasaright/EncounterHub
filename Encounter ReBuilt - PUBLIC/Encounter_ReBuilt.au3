@@ -2324,6 +2324,7 @@ EndFunc   ;==>CalculateFoeCount
 ; Related........: AddOns_GetIsDead, Party_GetPartyContextInfo
 ; ===============================================================================================================================
 Func CanContinue()
+    If $g_b_ForcePauseRequested Then Return False
     Local $l_b_IsDead = AddOns_GetIsDead($g_p_Player)
     If @error Then Return False
 
@@ -2414,7 +2415,7 @@ Func Quest18()
 
         $g_i_Count_Runs += 1
 
-		If Not (CanContinue() And $g_b_SpikeSuccess) Then
+		If Not $g_b_ForcePauseRequested And Not (CanContinue() And $g_b_SpikeSuccess) Then
             AddOns_Out("[WARN] Run failed")
             $g_i_Count_Fails += 1
         EndIf
@@ -3662,9 +3663,14 @@ Func Main()
 				Quest18()
 				GUI_UpdateStatistics()
 				Supply_CheckRequests()
-				If $g_b_PauseRequested Then
-					$g_b_PauseRequested = False
-					GUI_SetBotState($GC_I_BOTSTATE_IDLE)
+				If $g_b_ForcePauseRequested Then
+				    $g_b_ForcePauseRequested = False
+				    $g_b_PauseRequested = False
+				    AddOns_Out("[INFO] Force pause requested; returned to Kaineng Center")
+				    GUI_SetBotState($GC_I_BOTSTATE_IDLE)
+				ElseIf $g_b_PauseRequested Then
+				    $g_b_PauseRequested = False
+				    GUI_SetBotState($GC_I_BOTSTATE_IDLE)
 				EndIf
 				ContinueLoop
 
