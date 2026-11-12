@@ -2355,14 +2355,32 @@ EndFunc   ;==>CanContinue
 ;                  Memory_Read, CalculateFoeCount, CalculateRuntime, CanContinue, Fight, HeartbeatEnterQuest,
 ;                  HeartbeatStep, HeartbeatTravel, PickUpLoot, PrepareToFight, RunToStairs, Spike, WaitForFoes
 ; ===============================================================================================================================
+Func Quest18_ForcePauseReturn()
+    If Not $g_b_ForcePauseRequested Then Return False
+    AddOns_Out("[INFO] Force pause: aborting remaining run steps")
+    If Map_GetMapID() <> $GC_I_MAP_ID_OUTPOST And Map_GetMapID() <> $GC_I_MAP_ID_OUTPOST_EVENT Then
+        AddOns_Out("[INFO] Force pause: travelling to Kaineng Center")
+        If Not HeartbeatTravel($GC_I_MAP_ID_OUTPOST) Then Return False
+    EndIf
+    Return True
+EndFunc
+
 Func Quest18()
     AddOns_PurgeHook()
 
-	If Not HeartbeatStep("Inventory", "Inventory") Then Return SetError(1, 0, False)
+    If Not HeartbeatStep("Inventory", "Inventory") Then
+        If Quest18_ForcePauseReturn() Then Return True
+        Return SetError(1, 0, False)
+    EndIf
+    If Quest18_ForcePauseReturn() Then Return True
 
     If $g_i_Count_MinisterialCommendation >= $GC_I_EXCHANGE_AMOUNT Then
         AddOns_Out("[INFO] Collected enough Ministerial Commendations to exchange for rewards")
-        If Not HeartbeatStep("ExchangeRewards", "ExchangeRewards") Then Return SetError(1, 0, False)
+        If Not HeartbeatStep("ExchangeRewards", "ExchangeRewards") Then
+            If Quest18_ForcePauseReturn() Then Return True
+            Return SetError(1, 0, False)
+        EndIf
+        If Quest18_ForcePauseReturn() Then Return True
     EndIf
 
 	Local $l_i_MapID = Map_GetMapID()
@@ -2375,39 +2393,61 @@ Func Quest18()
     AddOns_Out("[INFO] Starting run #" & ($g_i_Count_Runs + 1))
 
     AddOns_Out("[INFO] Entering quest area")
-    If Not HeartbeatEnterQuest() Then Return SetError(1, 0, False)
+    If Not HeartbeatEnterQuest() Then
+        If Quest18_ForcePauseReturn() Then Return True
+        Return SetError(1, 0, False)
+    EndIf
+    If Quest18_ForcePauseReturn() Then Return True
 
     If Map_GetMapID() = $GC_I_MAP_ID_EXPLORABLE Then
         $g_b_CanContinue = True
         $g_h_Runtime = TimerInit()
 
         AddOns_Out("[INFO] Preparing for initial fight")
-        If Not HeartbeatStep("PrepareToFight", "PrepareToFight") Then Return SetError(1, 0, False)
+        If Not HeartbeatStep("PrepareToFight", "PrepareToFight") Then
+                If Quest18_ForcePauseReturn() Then Return True
+                Return SetError(1, 0, False)
+            EndIf
 
         If CanContinue() Then
             AddOns_Out("[INFO] Engaging in battle")
-            If Not HeartbeatStep("Fight", "Fight") Then Return SetError(1, 0, False)
+            If Not HeartbeatStep("Fight", "Fight") Then
+                If Quest18_ForcePauseReturn() Then Return True
+                Return SetError(1, 0, False)
+            EndIf
         EndIf
 
         If CanContinue() Then
             AddOns_Out("[INFO] Moving to stairs")
-            If Not HeartbeatStep("RunToStairs", "RunToStairs") Then Return SetError(1, 0, False)
+            If Not HeartbeatStep("RunToStairs", "RunToStairs") Then
+                If Quest18_ForcePauseReturn() Then Return True
+                Return SetError(1, 0, False)
+            EndIf
         EndIf
 
         If CanContinue() Then
             AddOns_Out("[INFO] Waiting for foes to ball")
-            If Not HeartbeatStep("WaitForFoes", "WaitForFoes") Then Return SetError(1, 0, False)
+            If Not HeartbeatStep("WaitForFoes", "WaitForFoes") Then
+                If Quest18_ForcePauseReturn() Then Return True
+                Return SetError(1, 0, False)
+            EndIf
         EndIf
 
         If CanContinue() Then
             AddOns_Out("[INFO] Preparing to spike foes")
-            If Not HeartbeatStep("Spike", "Spike") Then Return SetError(1, 0, False)
+            If Not HeartbeatStep("Spike", "Spike") Then
+                If Quest18_ForcePauseReturn() Then Return True
+                Return SetError(1, 0, False)
+            EndIf
         EndIf
 
 		If CanContinue() Then
 			If $g_b_SpikeSuccess Then
 				AddOns_Out("[INFO] Spike successful, picking up loot")
-				If Not HeartbeatStep("PickUpLoot", "PickUpLoot") Then Return SetError(1, 0, False)
+				If Not HeartbeatStep("PickUpLoot", "PickUpLoot") Then
+                If Quest18_ForcePauseReturn() Then Return True
+                Return SetError(1, 0, False)
+            EndIf
 			Else
 				AddOns_Out("[WARN] Spike unsuccessful")
 			EndIf
@@ -3661,14 +3701,20 @@ Func Main()
         Switch GUI_GetBotState()
 			Case $GC_I_BOTSTATE_RUN
 				Quest18()
+				If $g_b_ForcePauseRequested Then
+					If Map_GetMapID() = $GC_I_MAP_ID_OUTPOST Or HeartbeatTravel($GC_I_MAP_ID_OUTPOST) Then
+						$g_b_ForcePauseRequested = False
+						$g_b_PauseRequested = False
+						AddOns_Out("[INFO] Force pause complete; safely returned to Kaineng Center")
+						GUI_SetBotState($GC_I_BOTSTATE_IDLE)
+					Else
+						AddOns_Out("[WARN] Force pause is waiting for a successful return to Kaineng Center")
+					EndIf
+					ContinueLoop
+				EndIf
 				GUI_UpdateStatistics()
 				Supply_CheckRequests()
-				If $g_b_ForcePauseRequested Then
-				    $g_b_ForcePauseRequested = False
-				    $g_b_PauseRequested = False
-				    AddOns_Out("[INFO] Force pause requested; returned to Kaineng Center")
-				    GUI_SetBotState($GC_I_BOTSTATE_IDLE)
-				ElseIf $g_b_PauseRequested Then
+				If $g_b_PauseRequested Then
 				    $g_b_PauseRequested = False
 				    GUI_SetBotState($GC_I_BOTSTATE_IDLE)
 				EndIf
