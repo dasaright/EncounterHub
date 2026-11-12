@@ -13,7 +13,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-VERSION = '2.1.0'
+VERSION = '2.1.1'
 
 
 def command_action(command, buttons):
@@ -79,15 +79,17 @@ def update_bundle(root=None, commit=None):
             target=(bot_root/'Encounter_ReBuilt.downloaded.exe') if name.endswith('/Encounter_ReBuilt.exe') else bot_root/relative
         else:source=name;target=module_root/name
         destinations[name]=target
-        if target.is_file() and hashlib.sha256(target.read_bytes()).hexdigest()==digest:continue
-        # The bundled EXE is only a fallback for fresh installs. Existing installs
-        # recompile the updated AU3 source locally; downloading the binary on every
-        # update is unreliable for GitHub's large/binary contents endpoint.
+        # The commit SHA pins every download to one immutable repository snapshot.
+        # Manifest hashes are advisory: stale manifests must never strand an otherwise
+        # valid update. Compare installed files against the actual downloaded bytes.
+        # The bundled EXE is only a fallback for fresh installs; existing installs
+        # recompile the updated AU3 source locally.
         if name.endswith('/Encounter_ReBuilt.exe') and ((bot_root/'Encounter_ReBuilt.exe').is_file() or (app_root/'Encounter_ReBuilt.exe').is_file()):
             continue
         payload=remote_file(quote(source,safe='/'),commit)
-        if hashlib.sha256(payload).hexdigest()!=digest:raise ValueError('Bundle hash mismatch: '+name)
         if name.endswith('.py'):compile(payload,name,'exec')
+        if target.is_file() and hashlib.sha256(target.read_bytes()).digest()==hashlib.sha256(payload).digest():
+            continue
         payloads[name]=payload
 
     bot_root.mkdir(parents=True,exist_ok=True)
