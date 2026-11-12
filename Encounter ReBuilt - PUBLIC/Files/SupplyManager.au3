@@ -5,8 +5,17 @@ Global $g_b_SupplyBusy = False
 Func Supply_ConfigPath()
     Return @ScriptDir & "\Config\supply.ini"
 EndFunc
+Func Supply_CharacterName()
+    Return GUI_StripCharacterEnum(GUICtrlRead($g_i_CtrlID_Combo_CharInput))
+EndFunc
+Func Supply_CharacterFileKey()
+    Return StringRegExpReplace(Supply_CharacterName(), "[^A-Za-z0-9 _-]", "_")
+EndFunc
 Func Supply_RequestPath()
-    Return @ScriptDir & "\Config\supply.manual"
+    Return @ScriptDir & "\Config\supply.manual." & Supply_CharacterFileKey() & ".request"
+EndFunc
+Func Supply_RunningPath()
+    Return @ScriptDir & "\Config\supply.manual." & Supply_CharacterFileKey() & ".running"
 EndFunc
 Func Supply_NPC($name)
     Local $agents = Agent_GetAgentArray()
@@ -197,7 +206,8 @@ Func Supply_Run($manual)
         $g_b_SupplyBusy=False
         Return False
     EndIf
-    Local $profile=IniRead(Supply_ConfigPath(),"Supply",$manual ? "ManualProfile" : "AutomaticProfile","Full Conset")
+    Local $profileSection="Character:"&Supply_CharacterName()
+    Local $profile=IniRead(Supply_ConfigPath(),$profileSection,$manual ? "ManualProfile" : "AutomaticProfile","Full Conset")
     If $manual Then
         Local $min=Number(IniRead(Supply_ConfigPath(),"Supply","MinimumEctoSellPrice","0"))
         If $profile<>"Full Conset" Or Supply_ManualConsetOK() Then
@@ -221,13 +231,19 @@ Func Supply_Run($manual)
     $g_b_SupplyBusy=False
     Return True
 EndFunc
+Func Supply_CheckManualRequest()
+    If $g_b_SupplyBusy Then Return False
+    Local $request=Supply_RequestPath(),$running=Supply_RunningPath()
+    If Not FileExists($request) Then Return False
+    ; Atomic rename lets the Hub know the routine has started and prevents duplicate pickup.
+    If Not FileMove($request,$running,1) Then Return False
+    Supply_Run(True)
+    FileDelete($running)
+    Return True
+EndFunc
 Func Supply_CheckRequests()
     If $g_b_SupplyBusy Then Return
-    If FileExists(Supply_RequestPath()) Then
-        FileDelete(Supply_RequestPath())
-        Supply_Run(True)
-        Return
-    EndIf
+    If Supply_CheckManualRequest() Then Return
     If StringLower(IniRead(Supply_ConfigPath(),"Supply","AutomaticEnabled","false"))="true" _
     And Item_GetInventoryInfo("GoldStorage")>=Number(IniRead(Supply_ConfigPath(),"Supply","BankGoldThreshold","800000")) Then Supply_Run(False)
 EndFunc

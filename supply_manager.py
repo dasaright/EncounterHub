@@ -1,7 +1,7 @@
 """Conset supply configuration, price model, and EncounterHub dialog.
 
-Game-side trading is deliberately not automated here: Encounter ReBuilt currently
-exposes pause/resume controls but no supported trader, bank, or inventory API.
+The desktop stores shared market settings and per-character crafting profiles;
+in-game purchases and crafting are executed by the bot-side SupplyManager.au3.
 """
 from copy import deepcopy
 import math
@@ -185,30 +185,23 @@ if QDialog is not None:
     class SupplyDialog(QDialog):
         """Configuration and transparent cost calculator; no fake game execution."""
 
-        def __init__(self, parent, config=None, on_save=None, on_manual=None):
+        def __init__(self, parent, config=None, on_save=None):
             super().__init__(parent)
             self.setWindowTitle("EncounterHub — Supply Manager")
             self.setMinimumWidth(650)
             self.config = normalize_config(config)
             self.on_save = on_save
-            self.on_manual = on_manual
             root = QVBoxLayout(self)
 
             intro = QLabel(
-                "Configure automatic replenishment and manual bulk production. "
-                "Buy Now queues a manual run after the current farming run finishes."
+                "Configure global replenishment thresholds and market prices here. "
+                "Choose each character's automatic and manual crafting profiles on the main Hub."
             )
             intro.setWordWrap(True)
             root.addWidget(intro)
 
             settings_box = QGroupBox("Production settings")
             form = QFormLayout(settings_box)
-            self.auto_profile = QComboBox()
-            self.auto_profile.addItems(PROFILES)
-            self.auto_profile.setCurrentText(self.config["automatic_profile"])
-            self.manual_profile = QComboBox()
-            self.manual_profile.addItems(PROFILES)
-            self.manual_profile.setCurrentText(self.config["manual_profile"])
             self.bank_threshold = QSpinBox()
             self.bank_threshold.setRange(0, 2_000_000_000)
             self.bank_threshold.setGroupSeparatorShown(True)
@@ -221,8 +214,6 @@ if QDialog is not None:
             self.auto_enabled.addItem("Disabled", False)
             self.auto_enabled.addItem("Enabled", True)
             self.auto_enabled.setCurrentIndex(1 if self.config["automatic_enabled"] else 0)
-            form.addRow("Automatic production profile", self.auto_profile)
-            form.addRow("Manual bulk profile", self.manual_profile)
             form.addRow("Bank gold trigger", self.bank_threshold)
             form.addRow("Minimum ectoplasm sale price", self.min_ecto)
             form.addRow("Automatic replenishment", self.auto_enabled)
@@ -266,8 +257,8 @@ if QDialog is not None:
             root.addWidget(costs_box)
 
             self.status = QLabel(
-                "Buy Now queues a manual purchase. Automatic replenishment checks bank gold "
-                "after each completed run when enabled. In-game results still need testing."
+                "Automatic replenishment checks bank gold after each completed run when enabled. "
+                "Use the per-character Buy Cons button on the main Hub while that character is paused."
             )
             self.status.setWordWrap(True)
             root.addWidget(self.status)
@@ -276,12 +267,9 @@ if QDialog is not None:
             buttons.addStretch()
             save = QPushButton("Save Settings")
             save.clicked.connect(self.save_settings)
-            buy_now = QPushButton("Buy Now")
-            buy_now.clicked.connect(self.buy_now)
             close = QPushButton("Close")
             close.clicked.connect(self.reject)
             buttons.addWidget(save)
-            buttons.addWidget(buy_now)
             buttons.addWidget(close)
             root.addLayout(buttons)
 
@@ -294,8 +282,6 @@ if QDialog is not None:
             return normalize_config({
                 "automatic_enabled": self.auto_enabled.currentData(),
                 "bank_gold_threshold": self.bank_threshold.value(),
-                "automatic_profile": self.auto_profile.currentText(),
-                "manual_profile": self.manual_profile.currentText(),
                 "minimum_ecto_sell_price": self.min_ecto.value(),
                 "ecto_price": self.ecto_price.value(),
                 "ectos_per_armbrace": self.arm_rate.value(),
@@ -339,13 +325,6 @@ if QDialog is not None:
                 self.on_save(self.config)
             self.accept()
 
-        def buy_now(self):
-            self.config = self.current_config()
-            if self.on_save:
-                self.on_save(self.config)
-            if self.on_manual:
-                self.on_manual()
-            self.status.setText("Manual purchase queued. The bot will start after its current run finishes.")
 else:
     class SupplyDialog:
         def __init__(self, *args, **kwargs):

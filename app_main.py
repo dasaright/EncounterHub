@@ -12,7 +12,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-VERSION = '2.0.6'
+VERSION = '2.0.7'
 
 
 def command_action(command, buttons):
@@ -601,7 +601,9 @@ class Hub:
                     s.update(phase='wait',deadline=time.monotonic()+300);self.report(name,'status','Start requested; waiting for game')
             return
         command=s['pending']
-        if not command:return
+        if not command:
+            self.report(name,'command','Paused' if 'Resume' in buttons else 'Running' if 'Pause' in buttons else '')
+            return
         if time.monotonic()>s['command_deadline']:self.report(name,'command','Command timed out');s['pending']=None;return
         if time.monotonic()-s['sent_at']<2:return
         target,status,done=command_action(command,buttons)

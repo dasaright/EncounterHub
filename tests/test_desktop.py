@@ -85,19 +85,22 @@ class QtDesktop(unittest.TestCase):
 
     def test_native_columns_and_action_buttons(self):
         from qt_app import COLUMNS
-        self.assertEqual(self.window.table.columnCount(),12)
-        self.assertEqual(COLUMNS,('check','character','status','command','render','ontop','pause','resume','trade','stop','launch','storage'))
+        self.assertEqual(self.window.table.columnCount(),15)
+        self.assertEqual(COLUMNS,('check','character','status','command','render','ontop','pause','resume','trade','stop','launch','buycons','automatic','manual','storage'))
         self.window.command=Mock();self.window.launch=Mock();self.window.stop=Mock()
         self.window.row_widgets['Character One']['pause'].click();self.window.command.assert_called_once_with('Pause',['Character One'])
         self.window.command.reset_mock();self.window.row_widgets['Character One']['trade'].click()
         self.window.command.assert_called_once_with('Trade Mode',['Character One'])
         self.window.row_widgets['Character One']['launch'].click();self.window.launch.assert_called_once_with(['Character One'])
+        self.assertFalse(self.window.row_widgets['Character One']['buycons'].isEnabled())
+        self.assertEqual(self.window.row_widgets['Character One']['automatic'].currentText(),'Full Conset')
+        self.assertEqual(self.window.row_widgets['Character One']['manual'].currentText(),'Full Conset')
         self.assertEqual(self.window.checked,set())
     def test_columns_resize_without_overlay_misalignment(self):
         w=self.window;before=w.table.columnWidth(1)
         w.resize(1700,640);self.app.processEvents();self.app.processEvents()
         self.assertGreater(w.table.columnWidth(1),before)
-        for key in ('pause','resume','trade','stop','launch'):
+        for key in ('pause','resume','trade','stop','launch','buycons'):
             widget=w.row_widgets['Character One'][key]
             self.assertGreaterEqual(widget.width(),58)
         w.resize(900,460);self.app.processEvents()
@@ -120,6 +123,30 @@ class QtDesktop(unittest.TestCase):
         w.fit_columns()
         self.assertFalse(w.custom_columns)
         self.assertNotIn('column_widths',w.settings)
+
+    def test_account_profiles_are_saved_per_character_and_written_to_bot_ini(self):
+        w=self.window
+        w.row_widgets['Character One']['automatic'].setCurrentText('Grail of Might')
+        w.row_widgets['Character One']['manual'].setCurrentText('Armor of Salvation')
+        self.assertEqual(w.account_supply_profiles['Character One']['automatic_profile'],'Grail of Might')
+        self.assertEqual(w.account_supply_profiles['Character One']['manual_profile'],'Armor of Salvation')
+        import configparser
+        ini=configparser.ConfigParser()
+        ini.read(w.exe.parent/'Config'/'supply.ini')
+        self.assertEqual(ini['Character:Character One']['AutomaticProfile'],'Grail of Might')
+        self.assertEqual(ini['Character:Character One']['ManualProfile'],'Armor of Salvation')
+
+    def test_buy_cons_requires_paused_account_and_queues_character_specific_request(self):
+        w=self.window;name='Character One'
+        w.request_supply_purchase(name)
+        request=w.exe.parent/'Config'/('supply.manual.'+w.supply_file_key(name)+'.request')
+        self.assertFalse(request.exists())
+        w.paused_accounts.add(name);w.update_buycons_button(name)
+        self.assertTrue(w.row_widgets[name]['buycons'].isEnabled())
+        w.request_supply_purchase(name)
+        self.assertTrue(request.exists())
+        self.assertIn(name,w.buy_cons_pending)
+        self.assertFalse(w.row_widgets[name]['buycons'].isEnabled())
 
     def test_update_buttons_position_and_no_silent_install(self):
         self.assertLess(self.window.check_button.pos().y(),self.window.update_button.pos().y())

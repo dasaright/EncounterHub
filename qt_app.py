@@ -12,10 +12,10 @@ import time
 from PySide6.QtCore import Qt, QTimer, QSignalBlocker, QByteArray, QBuffer, QIODevice
 from PySide6.QtGui import QIcon, QPixmap, QImageReader, QAction
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,
-    QCheckBox,QTableWidget,QTableWidgetItem,QHeaderView,QAbstractItemView,QFileDialog,QMessageBox)
+    QCheckBox,QComboBox,QTableWidget,QTableWidgetItem,QHeaderView,QAbstractItemView,QFileDialog,QMessageBox)
 import app_main as engine
 from supervisor import ensure, RemoteProcess, command_line
-from supply_manager import SupplyDialog, normalize_config
+from supply_manager import SupplyDialog, normalize_config, PROFILES
 
 # TacoBot's exact current desktop stylesheet, committed in this repo.
 try:
@@ -1896,8 +1896,8 @@ End Sub
     except (OSError,subprocess.TimeoutExpired):pass
 
 
-COLUMNS=('check','character','status','command','render','ontop','pause','resume','trade','stop','launch','storage')
-CAPTIONS=('Select','Character','Bot Status','Command','Disable Rendering','Always on Top','Pause','Resume','Trade','Stop','Launch','Put in Storage')
+COLUMNS=('check','character','status','command','render','ontop','pause','resume','trade','stop','launch','buycons','automatic','manual','storage')
+CAPTIONS=('Select','Character','Bot Status','Command','Disable Rendering','Always on Top','Pause','Resume','Trade','Stop','Launch','Buy Cons','Automatically Craft','Manually Craft','Put in Storage')
 
 class QtDialogs:
     @staticmethod
@@ -1942,13 +1942,14 @@ class Desktop(QMainWindow):
         self.setWindowTitle('Encounter Hub '+engine.VERSION);self.resize(1400,640);self.setMinimumSize(900,460)
         self.closing=False;self.restarting=False;self.busy_update=False;self.update_available=False;self.update_commit=None
         self.native=engine.Native() if sys.platform=='win32' else None
-        self.sessions={};self.retired=[];self.checked=set();self.rows={};self.row_widgets={}
+        self.sessions={};self.retired=[];self.checked=set();self.rows={};self.row_widgets={};self.paused_accounts=set();self.buy_cons_pending=set()
         self.monitor_events=queue.Queue();self.requests=queue.Queue();self.monitor_stop=threading.Event();self.events=queue.Queue()
         self.data=Path(os.environ.get('LOCALAPPDATA',str(Path.home())))/'EncounterHub';self.data.mkdir(parents=True,exist_ok=True)
         self.settings_path=self.data/'settings.json'
         try:self.settings=json.loads(self.settings_path.read_text())
         except (OSError,ValueError):self.settings={}
         self.checked=set(self.settings.get('selected',[]))
+        self.account_supply_profiles=self.settings.setdefault('account_supply_profiles',{})
         self.exe=Path(self.settings.get('bot_path',str(Path(__file__).parent/'Encounter_ReBuilt.exe')))
         self.broker=ensure() if start_supervisor else None
         central=QWidget();self.setCentralWidget(central);outer=QVBoxLayout(central);outer.setContentsMargins(16,16,16,16);outer.setSpacing(12)
@@ -1973,7 +1974,7 @@ class Desktop(QMainWindow):
         self.resizing_columns=False
         saved=self.settings.get('column_widths',{})
         self.custom_columns=bool(saved)
-        defaults=(60,220,210,245,150,140,82,82,82,82,82,125)
+        defaults=(60,220,210,245,150,140,82,82,82,82,82,105,155,145,125)
         self.resizing_columns=True
         for index,key in enumerate(COLUMNS):
             width=saved.get(key,defaults[index]) if isinstance(saved,dict) else defaults[index]
@@ -1997,34 +1998,74 @@ class Desktop(QMainWindow):
         shortcut=QAction('Create Desktop Shortcut',self);shortcut.triggered.connect(self.shortcut);menu.addAction(shortcut)
 
     def open_supply_manager(self):
-        dialog=SupplyDialog(self,self.settings.get('supply',{}),self.save_supply_config,self.request_supply_purchase)
+        dialog=SupplyDialog(self,self.settings.get('supply',{}),self.save_supply_config)
         dialog.exec()
+
+    def supply_config_folder(self):
+        folder=self.exe.parent/'Config'
+        folder.mkdir(parents=True,exist_ok=True)
+        return folder
 
     def save_supply_config(self,config):
         self.settings['supply']=normalize_config(config)
         self.save()
-        cfg=self.settings['supply']
-        folder=self.exe.parent/'Config'
-        folder.mkdir(parents=True,exist_ok=True)
-        import configparser
-        ini=configparser.ConfigParser()
-        ini['Supply']={'AutomaticEnabled':str(cfg['automatic_enabled']).lower(),
-            'BankGoldThreshold':str(cfg['bank_gold_threshold']),
-            'AutomaticProfile':cfg['automatic_profile'],'ManualProfile':cfg['manual_profile'],
-            'MinimumEctoSellPrice':str(cfg['minimum_ecto_sell_price'])}
-        temp=folder/'supply.ini.tmp'
-        with temp.open('w',encoding='utf-8') as handle: ini.write(handle)
-        os.replace(temp,folder/'supply.ini')
+        self.write_supply_ini()
         self.notice.setText('Supply Manager settings saved to the selected bot folder.')
 
-    def request_supply_purchase(self):
-        folder=self.exe.parent/'Config'
-        folder.mkdir(parents=True,exist_ok=True)
-        (folder/'supply.manual').write_text('manual',encoding='ascii')
-        self.notice.setText('Manual supply purchase queued for after the current run.')
+    def save_account_profile(self,name,mode,profile):
+        if mode not in ('automatic_profile','manual_profile') or profile not in PROFILES:return
+        record=self.account_supply_profiles.setdefault(name,{})
+        record[mode]=profile
+        self.save()
+        self.write_supply_ini()
+        self.notice.setText(name+' — '+('Automatically Craft' if mode=='automatic_profile' else 'Manually Craft')+': '+profile)
+
+    def write_supply_ini(self):
+        import configparser
+        cfg=normalize_config(self.settings.get('supply',{}))
+        ini=configparser.ConfigParser(interpolation=None)
+        ini['Supply']={'AutomaticEnabled':str(cfg['automatic_enabled']).lower(),
+            'BankGoldThreshold':str(cfg['bank_gold_threshold']),
+            'MinimumEctoSellPrice':str(cfg['minimum_ecto_sell_price'])}
+        for character,profiles in self.account_supply_profiles.items():
+            ini['Character:'+character]={
+                'AutomaticProfile':profiles.get('automatic_profile') if profiles.get('automatic_profile') in PROFILES else 'Full Conset',
+                'ManualProfile':profiles.get('manual_profile') if profiles.get('manual_profile') in PROFILES else 'Full Conset'}
+        folder=self.supply_config_folder()
+        temp=folder/'supply.ini.tmp'
+        with temp.open('w',encoding='utf-8') as handle:ini.write(handle)
+        os.replace(temp,folder/'supply.ini')
+
+    @staticmethod
+    def supply_file_key(name):
+        import re
+        return re.sub(r'[^A-Za-z0-9 _-]','_',name)
+
+    def request_supply_purchase(self,name):
+        if name not in self.paused_accounts:
+            self.notice.setText('Pause '+name+' before using Buy Cons.')
+            return
+        folder=self.supply_config_folder()
+        key=self.supply_file_key(name)
+        request=folder/('supply.manual.'+key+'.request')
+        temporary=request.with_suffix(request.suffix+'.tmp')
+        temporary.write_text('manual',encoding='ascii')
+        os.replace(temporary,request)
+        self.buy_cons_pending.add(name)
+        self.update_buycons_button(name)
+        self.notice.setText('Buy Cons queued for '+name+'. The bot will run it while paused.')
+
+    def update_buycons_button(self,name):
+        widgets=self.row_widgets.get(name,{})
+        button=widgets.get('buycons')
+        if button is None:return
+        enabled=name in self.paused_accounts and name not in self.buy_cons_pending
+        button.setEnabled(enabled)
+        button.setText('Queued' if name in self.buy_cons_pending else 'Buy Cons')
 
     def minimum_column(self,index):
         if COLUMNS[index] in ('character','status','command'):return 100
+        if COLUMNS[index] in ('automatic','manual'):return 145
         return max(60,self.fontMetrics().horizontalAdvance(CAPTIONS[index])+24)
 
     def column_resized(self,index,old,width):
@@ -2066,6 +2107,7 @@ class Desktop(QMainWindow):
         except OSError:names=[]
         self.table.setRowCount(0);self.rows.clear();self.row_widgets.clear()
         for name in names:self.add_row(name)
+        self.write_supply_ini()
 
     def add_row(self,name):
         if name in self.rows:return
@@ -2077,14 +2119,23 @@ class Desktop(QMainWindow):
             self.table.setCellWidget(row,COLUMNS.index(key),holder);widgets[key]=checkbox
             checkbox.setChecked(name in self.checked if key=='check' else False);checkbox.setEnabled(key=='check')
             checkbox.clicked.connect(lambda checked,k=key,n=name:self.checkbox(n,k,checked))
-        for key in ('pause','resume','trade','stop','launch'):
-            button=QPushButton(key.title());button.setMinimumWidth(58);self.table.setCellWidget(row,COLUMNS.index(key),button);widgets[key]=button
+        for key in ('pause','resume','trade','stop','launch','buycons'):
+            button=QPushButton('Buy Cons' if key=='buycons' else key.title());button.setMinimumWidth(58);self.table.setCellWidget(row,COLUMNS.index(key),button);widgets[key]=button
             button.clicked.connect(lambda checked=False,k=key,n=name:self.row_action(n,k))
+        profiles=self.account_supply_profiles.get(name,{})
+        for key,setting in (('automatic','automatic_profile'),('manual','manual_profile')):
+            combo=QComboBox();combo.addItems(PROFILES)
+            combo.setCurrentText(profiles.get(setting,'Full Conset') if profiles.get(setting,'Full Conset') in PROFILES else 'Full Conset')
+            combo.currentTextChanged.connect(lambda value,n=name,k=setting:self.save_account_profile(n,k,value))
+            self.table.setCellWidget(row,COLUMNS.index(key),combo);widgets[key]=combo
         self.row_widgets[name]=widgets
+        self.update_buycons_button(name)
 
     def row_action(self,name,key):
         if key=='launch':self.launch([name])
-        elif key=='stop':self.stop([name])
+        elif key=='buycons':self.request_supply_purchase(name)
+        elif key=='stop':
+            self.paused_accounts.discard(name);self.update_buycons_button(name);self.stop([name])
         else:self.command('Trade Mode' if key=='trade' else key.title(),[name])
 
     def checkbox(self,name,key,checked):
@@ -2123,6 +2174,7 @@ class Desktop(QMainWindow):
         # Qt clicked passes a bool: interpret it as bulk launch.
         if isinstance(names,bool):names=None
         for name in self.selected() if names is None else names:
+            self.paused_accounts.discard(name);self.update_buycons_button(name)
             s=self.sessions.get(name)
             if s and (s['stopping'] or s['process'].members()):continue
             try:
@@ -2133,6 +2185,9 @@ class Desktop(QMainWindow):
 
     def stop(self,names=None):
         if isinstance(names,bool):names=None
+        targets=self.selected() if names is None else names
+        for name in targets:
+            self.paused_accounts.discard(name);self.update_buycons_button(name)
         return engine.Hub.stop(self,names)
 
     def tick(self):
@@ -2145,8 +2200,19 @@ class Desktop(QMainWindow):
                     widget=self.row_widgets[name][column]
                     with QSignalBlocker(widget):widget.setChecked(value=='1')
                 elif column in ('_render_enabled','_ontop_enabled'):self.row_widgets[name][column[1:-8]].setEnabled(bool(value))
-                else:self.tree.set(name,column,value)
+                else:
+                    self.tree.set(name,column,value)
+                    if column=='command':
+                        if value=='Paused':self.paused_accounts.add(name)
+                        elif value in ('Running','Resumed','Command timed out'):self.paused_accounts.discard(name)
+                        self.update_buycons_button(name)
         except queue.Empty:pass
+        for name in tuple(self.buy_cons_pending):
+            key=self.supply_file_key(name);folder=self.exe.parent/'Config'
+            if not (folder/('supply.manual.'+key+'.request')).exists() and not (folder/('supply.manual.'+key+'.running')).exists():
+                self.buy_cons_pending.discard(name)
+                self.update_buycons_button(name)
+                self.notice.set('Manual supply routine finished for '+name+'.')
         try:
             while True:
                 kind,value=self.events.get_nowait()
@@ -2160,14 +2226,28 @@ class Desktop(QMainWindow):
 
     def check_update(self):
         if self.busy_update:return
+        self.update_available=False;self.update_commit=None;self.update_button.setEnabled(False)
         self.busy_update=True;self.check_button.setEnabled(False);self.notice.setText('Checking GitHub for updates...')
         def work():
             try:
                 from hub import api,remote_file,ROOT
                 import hashlib
-                commit=api('git/ref/heads/main')['object']['sha'];manifest=json.loads(remote_file('desktop-bundle.json',commit))
-                available=any(not (ROOT/name).exists() or hashlib.sha256((ROOT/name).read_bytes()).hexdigest()!=digest for name,digest in manifest['files'].items())
-                self.events.put(('check',{'commit':commit,'available':available,'message':'Update '+manifest['version']+' is ready. Click Update Now.' if available else 'You are up to date ('+manifest['version']+').'}))
+                commit=api('git/ref/heads/main')['object']['sha']
+                manifest=json.loads(remote_file('desktop-bundle.json',commit))
+                required={'app_main.py','hub.py','Launch Hub.vbs','Launch Hub.cmd','update.json'}
+                allowed=required|{'qt_app.py','qt_style.py','supervisor.py','supply_manager.py','requirements.txt','bundle.json'}
+                if manifest.get('format')!=1 or not required.issubset(manifest.get('files',{})) or not set(manifest.get('files',{})).issubset(allowed):
+                    raise ValueError('GitHub returned an unsupported desktop update manifest')
+                mismatches=[]
+                for name,digest in manifest['files'].items():
+                    if not isinstance(digest,str) or len(digest)!=64 or any(c not in '0123456789abcdef' for c in digest):
+                        raise ValueError('Invalid SHA-256 in update manifest: '+name)
+                    local=ROOT/name
+                    if not local.is_file() or hashlib.sha256(local.read_bytes()).hexdigest()!=digest:mismatches.append(name)
+                available=bool(mismatches)
+                detail=('Files to update: '+', '.join(mismatches)) if available else 'All installed files match the latest desktop bundle.'
+                message=('Encounter Hub '+manifest['version']+' is available. '+detail+'. Click Update Now.' if available else 'You are up to date ('+manifest['version']+'). '+detail)
+                self.events.put(('check',{'commit':commit,'available':available,'message':message}))
             except Exception as exc:self.events.put(('error','Update check failed: '+str(exc)))
         threading.Thread(target=work,daemon=True).start()
 

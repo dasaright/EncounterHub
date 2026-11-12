@@ -60,5 +60,5 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag EncounterHub-Windows.zip EncounterHub-Windows.zip.sha256 --clobber --repo $env:GITHUB_REPOSITORY
           } else {
-            gh release create $tag EncounterHub-Windows.zip EncounterHub-Windows.zip.sha256 --target $env:GITHUB_SHA --title "Encounter Hub $version" --notes 'New taco and anime dagger icon throughout the desktop, taskbar, shortcuts and executable. Existing installations receive the desktop artwork through Check for Updates and Update Now without stopping bots.' --repo $env:GITHUB_REPOSITORY
+            gh release create $tag EncounterHub-Windows.zip EncounterHub-Windows.zip.sha256 --target $env:GITHUB_SHA --title "Encounter Hub $version" --notes 'Adds per-character Automatically Craft and Manually Craft profiles, paused-only Buy Cons controls, and improved update detection with file-level diagnostics. Supply settings are saved per character; the bot-side routine processes requests while paused. Includes the latest desktop bundle and updater manifests.' --repo $env:GITHUB_REPOSITORY
           }
