@@ -26,6 +26,7 @@ jobs:
         run: |
           Copy-Item hub.py,app_main.py,qt_app.py,qt_style.py,supervisor.py,supply_manager.py,requirements.txt,update.json,bundle.json,desktop-bundle.json,taco.ico dist/EncounterHub/
           Copy-Item 'Launch Hub.vbs','Launch Hub.cmd' dist/EncounterHub/
+          Copy-Item 'Encounter ReBuilt - PUBLIC' dist/EncounterHub/ -Recurse
       - name: Executable smoke test
         shell: pwsh
         run: |
@@ -60,5 +61,5 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag EncounterHub-Windows.zip EncounterHub-Windows.zip.sha256 --clobber --repo $env:GITHUB_REPOSITORY
           } else {
-            gh release create $tag EncounterHub-Windows.zip EncounterHub-Windows.zip.sha256 --target $env:GITHUB_SHA --title "Encounter Hub $version" --notes 'Adds per-character Automatically Craft and Manually Craft profiles, paused-only Buy Cons controls, and improved update detection with file-level diagnostics. Supply settings are saved per character; the bot-side routine processes requests while paused. Includes the latest desktop bundle and updater manifests.' --repo $env:GITHUB_REPOSITORY
+            gh release create $tag EncounterHub-Windows.zip EncounterHub-Windows.zip.sha256 --target $env:GITHUB_SHA --title "Encounter Hub $version" --notes 'Includes the complete Windows desktop app, updater files, and full Encounter ReBuilt - PUBLIC AutoIt source folder. Compile Encounter_ReBuilt.au3 with AutoIt to rebuild the bot executable.' --repo $env:GITHUB_REPOSITORY
           }
