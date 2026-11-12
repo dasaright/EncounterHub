@@ -96,8 +96,12 @@ class Bundles(unittest.TestCase):
             return app_main.update_bundle(self.root)
     def test_full_install_preserves_settings(self):
         self.invoke()
-        for name,data in self.payloads.items():self.assertEqual((self.root/name).read_bytes(),data)
+        for name,data in self.payloads.items():
+            relative=name[4:] if name.startswith('bot/') else name
+            if name.endswith('/Encounter_ReBuilt.exe'):relative='Encounter ReBuilt/Encounter_ReBuilt.exe'
+            self.assertEqual((self.root/relative).read_bytes(),data)
         self.assertEqual((self.root/'settings.json').read_text(),'KEEP')
+        self.assertTrue((self.root/'Encounter ReBuilt'/'Encounter_ReBuilt.au3').is_file())
     def test_validate_all_before_install(self):
         self.payloads['hub.py']=b'tampered'
         with self.assertRaises(ValueError):self.invoke()
