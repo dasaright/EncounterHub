@@ -2274,8 +2274,7 @@ class Desktop(QMainWindow):
         self.update_worker=threading.Thread(target=work,daemon=False);self.update_worker.start()
 
     def restart(self):
-        # Update Now may have migrated the bot and staged a freshly compiled EXE.
-        # Reload its saved path before save() so the old in-memory path cannot undo migration.
+        # Refresh the saved path before saving: Update Now may have moved or rebuilt the bot.
         try:
             saved=json.loads(self.settings_path.read_text('utf-8'))
             if saved.get('bot_path'):self.exe=Path(saved['bot_path'])
@@ -2284,6 +2283,85 @@ class Desktop(QMainWindow):
         self.save();self.monitor_stop.set()
         def finish():
             if self.monitor_worker.is_alive():QTimer.singleShot(100,finish);return
+            marker=self.data/'pending_install.json'
+            if marker.is_file():
+                script=self.data/'apply_update.ps1'
+                script.write_text(r"""param([int]$WaitPid,[string]$MarkerPath)
+$ErrorActionPreference = 'Stop'
+try {
+    $m = Get-Content -Raw -LiteralPath $MarkerPath | ConvertFrom-Json
+    Wait-Process -Id $WaitPid -ErrorAction SilentlyContinue
+    $stage = [string]$m.stage_root
+    $target = [string]$m.target_root
+    $source = Join-Path $stage 'EncounterHub'
+    $stagedBot = Join-Path $source 'Encounter ReBuilt'
+    $newConfig = Join-Path $stagedBot 'Config'
+    $newImages = Join-Path $stagedBot 'Images'
+    New-Item -ItemType Directory -Force -Path $newConfig,$newImages | Out-Null
+    foreach ($oldConfig in @((Join-Path $target 'Config'),(Join-Path $target 'Encounter ReBuilt\Config'))) {
+        if (Test-Path -LiteralPath $oldConfig) {
+            Get-ChildItem -LiteralPath $oldConfig -Force | ForEach-Object {
+                $dest = Join-Path $newConfig $_.Name
+                if (!(Test-Path -LiteralPath $dest)) {
+                    if ($_.PSIsContainer) { Copy-Item -LiteralPath $_.FullName -Destination $dest -Recurse }
+                    else { Copy-Item -LiteralPath $_.FullName -Destination $dest }
+                }
+            }
+        }
+    }
+    $oldImages = Join-Path $target 'Images'
+    if (Test-Path -LiteralPath $oldImages) {
+        Get-ChildItem -LiteralPath $oldImages -Force | ForEach-Object {
+            $dest = Join-Path $newImages $_.Name
+            if (!(Test-Path -LiteralPath $dest)) {
+                if ($_.PSIsContainer) { Copy-Item -LiteralPath $_.FullName -Destination $dest -Recurse }
+                else { Copy-Item -LiteralPath $_.FullName -Destination $dest }
+            }
+        }
+    }
+    $oldBotFolder = Join-Path $target 'Encounter ReBuilt'
+    if (Test-Path -LiteralPath $oldBotFolder) {
+        try { Remove-Item -LiteralPath $oldBotFolder -Recurse -Force -ErrorAction Stop } catch {}
+    }
+    Copy-Item -Path (Join-Path $source '*') -Destination $target -Recurse -Force
+    $legacyFiles = @('app_main.py','hub.py','qt_app.py','qt_style.py','supervisor.py','supply_manager.py','requirements.txt',
+        'update.json','bundle.json','desktop-bundle.json','bot-bundle.json','taco.ico','Launch Hub.vbs','Launch Hub.cmd')
+    foreach ($name in $legacyFiles) {
+        $path = Join-Path $target $name
+        if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
+    }
+    $nestedClone = Join-Path $target 'Encounter ReBuilt\EncounterHub-main'
+    if (Test-Path -LiteralPath $nestedClone) { Remove-Item -LiteralPath $nestedClone -Recurse -Force -ErrorAction SilentlyContinue }
+    $newExe = Join-Path $target 'EncounterHub.exe'
+    Start-Process -FilePath $newExe -WorkingDirectory $target
+    # Keep the old root-level bot executable and its Config available to any run
+    # already using them; remove those legacy items as soon as that process exits.
+    $oldBotExe = Join-Path $target 'Encounter_ReBuilt.exe'
+    do {
+        $running = Get-CimInstance Win32_Process -Filter "Name='Encounter_ReBuilt.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.ExecutablePath -ieq $oldBotExe }
+        if ($running) { Start-Sleep -Seconds 5 }
+    } while ($running)
+    foreach ($pair in @(@((Join-Path $target 'Config'),(Join-Path $target 'Encounter ReBuilt\Config')),
+                       @((Join-Path $target 'Images'),(Join-Path $target 'Encounter ReBuilt\Images')))) {
+        $oldFolder = $pair[0]; $newFolder = $pair[1]
+        if (Test-Path -LiteralPath $oldFolder) {
+            if (Test-Path -LiteralPath $newFolder) { Remove-Item -LiteralPath $oldFolder -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+    }
+    if (Test-Path -LiteralPath $oldBotExe) { Remove-Item -LiteralPath $oldBotExe -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $MarkerPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+} catch {
+    $_ | Out-File -LiteralPath (Join-Path $env:LOCALAPPDATA 'EncounterHub\install_error.txt') -Append
+}
+""",encoding='utf-8')
+                try:
+                    subprocess.Popen(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(script),str(os.getpid()),str(marker)],
+                                     creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+                    self.restarting=True;self.close();return
+                except OSError as exc:
+                    self.notice.setText('Could not apply the staged folder migration: '+str(exc));return
             try:
                 subprocess.Popen(command_line()+['--wait-pid',str(os.getpid())],creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
             except OSError as exc:
