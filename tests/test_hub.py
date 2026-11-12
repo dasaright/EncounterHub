@@ -83,7 +83,7 @@ class Updates(unittest.TestCase):
 class Bundles(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name);self.addCleanup(self.temp.cleanup)
-        self.payloads={'app_main.py':b'VERSION="new"\n','hub.py':b'HUB_BUNDLE_SUPPORT=True\n','Launch Hub.vbs':b'Option Explicit\n','Launch Hub.cmd':b'@echo off\n','update.json':b'{}'}
+        self.payloads={'app_main.py':b'VERSION="new"\n','hub.py':b'HUB_BUNDLE_SUPPORT=True\n','qt_app.py':b'UI=True\n','qt_style.py':b'STYLE=True\n','supervisor.py':b'SUP=True\n','supply_manager.py':b'SUPPLY=True\n','bundle.json':b'{}','update.json':b'{}','bot/Encounter ReBuilt/Encounter_ReBuilt.au3':b'Source=True\n','bot/Encounter ReBuilt/Encounter_ReBuilt.exe':b'EXE'}
         self.manifest={'format':1,'version':'new','files':{n:hashlib.sha256(b).hexdigest() for n,b in self.payloads.items()}}
         (self.root/'settings.json').write_text('KEEP')
     def invoke(self):
