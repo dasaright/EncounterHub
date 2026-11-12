@@ -12,6 +12,9 @@ from app_main import command_action
 class Commands(unittest.TestCase):
     def test_pause_never_resumes(self):
         self.assertEqual(command_action('Pause',{'Resume':1}),(None,'Paused',True))
+    def test_pause_escalates_to_force_pause(self):
+        self.assertEqual(command_action('Pause',{'Force pause now':1})[0],'Force pause now')
+
     def test_trade_waits_for_pause(self):
         self.assertEqual(command_action('Trade Mode',{'Pause':1})[0],'Pause')
         self.assertIsNone(command_action('Trade Mode',{'Waiting for pause...':1})[0])
