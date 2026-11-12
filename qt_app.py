@@ -2203,6 +2203,12 @@ class Desktop(QMainWindow):
                 else:
                     self.tree.set(name,column,value)
                     if column=='command':
+                        pause_button=self.row_widgets.get(name,{}).get('pause')
+                        if pause_button:
+                            if value in ('Pausing after current run','Waiting for current run to finish','Force pause requested'):
+                                pause_button.setText('Force pause now')
+                            elif value in ('Paused','Running','Resumed','Command timed out'):
+                                pause_button.setText('Pause')
                         if value=='Paused':self.paused_accounts.add(name)
                         elif value in ('Running','Resumed','Command timed out'):self.paused_accounts.discard(name)
                         self.update_buycons_button(name)
