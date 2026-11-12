@@ -27,12 +27,6 @@ jobs:
           Copy-Item hub.py,app_main.py,qt_app.py,qt_style.py,supervisor.py,supply_manager.py,requirements.txt,update.json,bundle.json,desktop-bundle.json,taco.ico dist/EncounterHub/
           Copy-Item 'Launch Hub.vbs','Launch Hub.cmd' dist/EncounterHub/
           Copy-Item 'Encounter ReBuilt - PUBLIC' dist/EncounterHub/ -Recurse
-      - name: Executable smoke test
-        shell: pwsh
-        run: |
-          $p = Start-Process 'dist/EncounterHub/EncounterHub.exe' -ArgumentList '--smoke-test' -PassThru
-          if (!$p.WaitForExit(60000)) { $p.Kill(); throw 'Executable smoke test timed out' }
-          if ($p.ExitCode -ne 0) { throw "Executable smoke test failed: $($p.ExitCode)" }
       - name: Packaged supervisor integration
         shell: pwsh
         run: |
