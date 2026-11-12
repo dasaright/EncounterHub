@@ -98,7 +98,7 @@ class Bundles(unittest.TestCase):
         self.invoke()
         for name,data in self.payloads.items():
             relative=name[4:] if name.startswith('bot/') else name
-            if name.endswith('/Encounter_ReBuilt.exe'):relative='Encounter ReBuilt/Encounter_ReBuilt.exe'
+            if name.endswith('/Encounter_ReBuilt.exe'):relative='Encounter ReBuilt/Encounter_ReBuilt.downloaded.exe'
             self.assertEqual((self.root/relative).read_bytes(),data)
         self.assertEqual((self.root/'settings.json').read_text(),'KEEP')
         self.assertTrue((self.root/'Encounter ReBuilt'/'Encounter_ReBuilt.au3').is_file())
