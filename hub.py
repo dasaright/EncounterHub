@@ -120,8 +120,8 @@ def main():
     if elevate():
         return
     if '--supervisor' in sys.argv:
-        from supervisor import serve
-        serve();return
+        import importlib
+        importlib.import_module('supervisor').serve();return
     if '--wait-pid' in sys.argv:
         wait_for_exit(int(sys.argv[sys.argv.index('--wait-pid')+1]))
     # One hub at a time prevents duplicate control/update sessions.
