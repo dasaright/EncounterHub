@@ -1,17 +1,17 @@
 {
   "format": 1,
-  "version": "2.0.8",
+  "version": "2.0.9",
   "files": {
-    "app_main.py": "947300fe092610353ae889d257c40d94f92dd64a0dbf8e2a3721be074f6967d4",
+    "app_main.py": "6ee739d1e05bdc9e7d79b19a8360528cda28471ad7b831e2358695b06029844e",
     "hub.py": "db5850f8e1fd8f3c90af92d391755007e78d54fd3b7da37a419c41d2985e6565",
     "Launch Hub.vbs": "df0e58b1a789a202a386345e9a1352f876f3803f7183e3acec88e4ec7960082e",
     "Launch Hub.cmd": "5f81b6ec2091ca8d00609b484ddbc4c0e0cb906691658678ee4075493362061d",
-    "update.json": "843d808fdeba6487ddb82857e8cdc753e6bbb8cfce69c6d6825f4441828e83dd",
+    "update.json": "a275830667d3252636b1e0ea0ad875111db4f9bc3f47db25dd62a64f626ee6c0",
     "qt_app.py": "62b9951328ece2a401cb39b8cc7137f3553a7d8a8171a1601dd1b493a89a8559",
     "qt_style.py": "8a541acbeff3471d93f22d787a91d83eb640437737eaf6d0d25dcb1669b18680",
     "supervisor.py": "38e5a7dbc3b0cdd75a68f97bac817b5ba4f2a792139832b12708bb8319307625",
     "supply_manager.py": "1ec432eafa6db0552396757eaec9b4cc0f6b57f33fac0d23a85ca753abf7961c",
     "requirements.txt": "187481358e70f360a6ad4dacdd74f5c5b695ccc5b7c63ca12585fe4043111f2c",
-    "bundle.json": "620229e6a08cc445d75d3236bffeb0451760b3be834a52a8f8990896efb36598"
+    "bundle.json": "7a8aa7465c6502d1fd4ead060ef65548847649a6dac52ef6fc62246c1c1a3c22"
   }
 }
