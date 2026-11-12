@@ -1950,7 +1950,8 @@ class Desktop(QMainWindow):
         except (OSError,ValueError):self.settings={}
         self.checked=set(self.settings.get('selected',[]))
         self.account_supply_profiles=self.settings.setdefault('account_supply_profiles',{})
-        self.exe=Path(self.settings.get('bot_path',str(Path(__file__).parent/'Encounter_ReBuilt.exe')))
+        app_root=Path(sys.executable).resolve().parent if getattr(sys,'frozen',False) else Path(__file__).resolve().parent
+        self.exe=Path(self.settings.get('bot_path',str(app_root/'Encounter ReBuilt'/'Encounter_ReBuilt.exe')))
         self.broker=ensure() if start_supervisor else None
         central=QWidget();self.setCentralWidget(central);outer=QVBoxLayout(central);outer.setContentsMargins(16,16,16,16);outer.setSpacing(12)
         top=QHBoxLayout();outer.addLayout(top)
@@ -2208,7 +2209,7 @@ class Desktop(QMainWindow):
                     if column=='command':
                         pause_button=self.row_widgets.get(name,{}).get('pause')
                         if pause_button:
-                            if value in ('Pausing after current run','Waiting for current run to finish','Force pause requested'):
+                            if value in ('Pausing after current run','Waiting for current run to finish','Force pause requested','Force pause now sent'):
                                 pause_button.setText('Force pause now')
                             elif value in ('Paused','Running','Resumed','Command timed out'):
                                 pause_button.setText('Pause')
