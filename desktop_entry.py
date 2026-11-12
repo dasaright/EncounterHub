@@ -43,6 +43,7 @@ if '--smoke-test' in sys.argv:
     assert window.check_button.pos().y()<window.update_button.pos().y()
     window.monitor_stop.set();window.monitor_worker.join(timeout=5)
     window.restarting=True;window.close()
-    sys.exit(0)
+    # CI-only path: bypass Qt shutdown hooks once assertions pass.
+    os._exit(0)
 
 sys.modules['hub'].main()
