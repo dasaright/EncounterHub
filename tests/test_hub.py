@@ -102,6 +102,13 @@ class Bundles(unittest.TestCase):
             self.assertEqual((self.root/relative).read_bytes(),data)
         self.assertEqual((self.root/'settings.json').read_text(),'KEEP')
         self.assertTrue((self.root/'Encounter ReBuilt'/'Encounter_ReBuilt.au3').is_file())
+    def test_existing_character_config_moves_into_bot_folder(self):
+        config=self.root/'Config';config.mkdir()
+        (config/'characters.ini').write_text('[Existing Character]\\n')
+        self.invoke()
+        self.assertEqual((self.root/'Encounter ReBuilt'/'Config'/'characters.ini').read_text(),'[Existing Character]\\n')
+        self.assertFalse(config.exists())
+
     def test_validate_all_before_install(self):
         self.payloads['hub.py']=b'tampered'
         with self.assertRaises(ValueError):self.invoke()
