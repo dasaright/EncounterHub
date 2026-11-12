@@ -8,6 +8,8 @@ import tkinter
 import socket
 import ctypes
 import urllib.request
+import ssl
+import certifi
 import zipfile
 import hashlib
 import secrets
