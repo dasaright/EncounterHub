@@ -2358,17 +2358,7 @@ EndFunc   ;==>CanContinue
 Func Quest18_ForcePauseReturn()
     If Not $g_b_ForcePauseRequested Then Return False
     AddOns_Out("[INFO] Force pause: aborting remaining run steps")
-    If Map_GetMapID() <> $GC_I_MAP_ID_OUTPOST And Map_GetMapID() <> $GC_I_MAP_ID_OUTPOST_EVENT Then
-        AddOns_Out("[INFO] Force pause: travelling to Kaineng Center")
-        If Not HeartbeatTravel($GC_I_MAP_ID_OUTPOST) Then Return False
-    EndIf
-    Return True
-EndFunc
-
-Func Quest18_ForcePauseReturn()
-    If Not $g_b_ForcePauseRequested Then Return False
-    AddOns_Out("[INFO] Force pause: aborting remaining run steps")
-    If Map_GetMapID() <> $GC_I_MAP_ID_OUTPOST And Map_GetMapID() <> $GC_I_MAP_ID_OUTPOST_EVENT Then
+    If Map_GetMapID() <> $GC_I_MAP_ID_OUTPOST Then
         AddOns_Out("[INFO] Force pause: travelling to Kaineng Center")
         If Not HeartbeatTravel($GC_I_MAP_ID_OUTPOST) Then Return False
     EndIf
