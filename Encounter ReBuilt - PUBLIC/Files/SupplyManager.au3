@@ -59,13 +59,29 @@ Func Supply_BuyMats($item)
         Local $missing=$need[$i]-Supply_Count($models[$i])
         If $missing<=0 Then ContinueLoop
         If Not Supply_Talk("Shad") Then Return False
-        If Not Merchant_BuyItem($models[$i],Ceiling($missing/10),True) Then Return False
-        Sleep(300)
+        AddOns_Out("[SUPPLY] Buying "&$missing&" of material model "&$models[$i])
+        If Not Merchant_BuyItem($models[$i],Ceiling($missing/10),True) Then
+            AddOns_Out("[SUPPLY] Material purchase failed for model "&$models[$i]&"; check gold, merchant stock, and inventory space")
+            Return False
+        EndIf
+        Sleep(500)
+        Local $remaining=$need[$i]-Supply_Count($models[$i])
+        If $remaining>0 Then
+            AddOns_Out("[SUPPLY] Material purchase incomplete for model "&$models[$i]&"; still missing "&$remaining)
+            Return False
+        EndIf
     Next
     Return True
 EndFunc
 Func Supply_Craft($item)
-    If AddOns_GetEmptyInventorySlotCount()<=1 Or Not Supply_BuyMats($item) Then Return False
+    If AddOns_GetEmptyInventorySlotCount()<=1 Then
+        AddOns_Out("[SUPPLY] Cannot craft "&$item&": fewer than 2 free inventory slots")
+        Return False
+    EndIf
+    If Not Supply_BuyMats($item) Then
+        AddOns_Out("[SUPPLY] Cannot craft "&$item&": required materials could not be prepared")
+        Return False
+    EndIf
     Local $model=0,$npc="", $recipe[2][2]
     Switch $item
         Case "Essence of Celerity"
@@ -97,10 +113,22 @@ Func Supply_Craft($item)
             $recipe[1][0]=$GC_I_MODELID_IRON
             $recipe[1][1]=50
     EndSwitch
-    If Not Supply_Talk($npc) Then Return False
-    If Not Merchant_CraftItem($model,250,$recipe,1) Then Return False
-    Sleep(700)
-    AddOns_Out("[SUPPLY] Crafted "&$item)
+    If Not Supply_Talk($npc) Then
+        AddOns_Out("[SUPPLY] Crafter unavailable for "&$item&": "&$npc)
+        Return False
+    EndIf
+    Local $before=Supply_Stock($item)
+    If Not Merchant_CraftItem($model,250,$recipe,1) Then
+        AddOns_Out("[SUPPLY] Craft request failed for "&$item&"; check character gold and recipe materials")
+        Return False
+    EndIf
+    Sleep(1000)
+    Local $after=Supply_Stock($item)
+    If $after<=$before Then
+        AddOns_Out("[SUPPLY] Craft did not produce "&$item&"; inventory count did not increase")
+        Return False
+    EndIf
+    AddOns_Out("[SUPPLY] Crafted "&$item&" (stock "&$before&" -> "&$after&")")
     Return True
 EndFunc
 Func Supply_Stock($item)
@@ -177,6 +205,16 @@ Func Supply_ManualConsetOK()
 EndFunc
 Func Supply_Produce($profile)
     Local $passes=0
+    Local $gold=Item_GetInventoryInfo("GoldCharacter")
+    Local $slots=AddOns_GetEmptyInventorySlotCount()
+    If $gold<250 Then
+        AddOns_Out("[SUPPLY] Production skipped: character gold is "&$gold&"g; at least 250g is required")
+        Return False
+    EndIf
+    If $slots<=1 Then
+        AddOns_Out("[SUPPLY] Production skipped: only "&$slots&" free inventory slots; at least 2 are required")
+        Return False
+    EndIf
     While Item_GetInventoryInfo("GoldCharacter")>=250 And AddOns_GetEmptyInventorySlotCount()>1
         Local $item=$profile
         If $profile="Full Conset" Then
@@ -193,6 +231,12 @@ Func Supply_Produce($profile)
         $passes+=1
         If $passes>=100 Then ExitLoop
     WEnd
+    If $passes=0 Then
+        AddOns_Out("[SUPPLY] No items were crafted; routine is reporting failure")
+        Return False
+    EndIf
+    AddOns_Out("[SUPPLY] Production finished: "&$passes&" craft(s) completed")
+    Return True
 EndFunc
 Func Supply_Run($manual)
     If $g_b_SupplyBusy Then Return False
@@ -222,7 +266,7 @@ Func Supply_Run($manual)
         Local $min=Number(IniRead(Supply_ConfigPath(),"Supply","MinimumEctoSellPrice","0"))
         If $profile<>"Full Conset" Or Supply_ManualConsetOK() Then
             If Supply_SellEctos($min) Then
-                Supply_Produce($profile)
+                If Not Supply_Produce($profile) Then $l_b_SupplySuccess=False
             Else
                 $l_b_SupplySuccess=False
                 AddOns_Out("[SUPPLY] Routine stopped: required merchant interaction failed")
@@ -239,7 +283,10 @@ Func Supply_Run($manual)
             If $withdraw>$bank Then $withdraw=$bank
             If $withdraw>0 Then Item_WithdrawGold($withdraw)
             Sleep(500)
-            Supply_Produce($profile)
+            If Not Supply_Produce($profile) Then $l_b_SupplySuccess=False
+        Else
+            $l_b_SupplySuccess=False
+            AddOns_Out("[SUPPLY] Automatic production skipped: bank gold "&$bank&"g is below threshold "&$threshold&"g")
         EndIf
     EndIf
     If $l_b_SupplySuccess Then
