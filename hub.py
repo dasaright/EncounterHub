@@ -19,7 +19,7 @@ def https_context():
     """Use certifi's maintained CA bundle for verified HTTPS in frozen builds."""
     return ssl.create_default_context(cafile=certifi.where())
 REPOSITORY = 'dasaright/EncounterHub'
-ROOT = Path(sys.executable).resolve().parent if getattr(sys,'frozen',False) else Path(__file__).resolve().parent
+ROOT = Path(getattr(sys,'_MEIPASS',Path(sys.executable).resolve().parent)) if getattr(sys,'frozen',False) else Path(__file__).resolve().parent
 
 
 def api(path):
