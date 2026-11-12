@@ -83,7 +83,7 @@ def update_bundle(root=None, commit=None):
         # The bundled EXE is only a fallback for fresh installs. Existing installs
         # recompile the updated AU3 source locally; downloading the binary on every
         # update is unreliable for GitHub's large/binary contents endpoint.
-        if name.endswith('/Encounter_ReBuilt.exe') and (bot_root/'Encounter_ReBuilt.exe').is_file():
+        if name.endswith('/Encounter_ReBuilt.exe') and ((bot_root/'Encounter_ReBuilt.exe').is_file() or (app_root/'Encounter_ReBuilt.exe').is_file()):
             continue
         payload=remote_file(quote(source,safe='/'),commit)
         if hashlib.sha256(payload).hexdigest()!=digest:raise ValueError('Bundle hash mismatch: '+name)
