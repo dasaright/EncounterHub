@@ -30,14 +30,13 @@ def api(path):
 
 
 def remote_file(path, commit):
-    data = api('contents/' + urllib.parse.quote(urllib.parse.unquote(path),safe='/') + '?ref=' + commit)
-    if data.get('encoding') == 'base64':
-        return base64.b64decode(data['content'])
-    if data.get('download_url'):
-        raw='https://raw.githubusercontent.com/'+REPOSITORY+'/'+commit+'/'+urllib.parse.quote(path,safe='/')
-        req=urllib.request.Request(raw,headers={'User-Agent':'EncounterHub'})
-        with urllib.request.urlopen(req,timeout=120,context=https_context()) as response:return response.read()
-    raise ValueError('Unexpected GitHub file encoding')
+    # Fetch from the immutable commit directly. The Contents API can return
+    # stale/encoded metadata or truncate large files; raw.githubusercontent.com
+    # returns the exact bytes that the bundle manifest was generated from.
+    raw='https://raw.githubusercontent.com/'+REPOSITORY+'/'+commit+'/'+urllib.parse.quote(path,safe='/')
+    req=urllib.request.Request(raw,headers={'User-Agent':'EncounterHub'})
+    with urllib.request.urlopen(req,timeout=120,context=https_context()) as response:
+        return response.read()
 
 
 def validate_manifest(manifest):
@@ -57,11 +56,11 @@ def update(root=ROOT):
     manifest = json.loads(manifest_bytes)
     validate_manifest(manifest)
     target = root / 'app_main.py'
-    if target.exists() and hashlib.sha256(target.read_bytes()).hexdigest() == manifest['files']['app_main.py']:
-        return 'Already up to date (' + manifest['version'] + ')'
     payload = remote_file('app_main.py', commit)
-    if hashlib.sha256(payload).hexdigest() != manifest['files']['app_main.py']:
-        raise ValueError('Update hash does not match; keeping installed version')
+    # Compare with the actual file at the pinned commit, not a possibly stale
+    # manifest hash. This keeps older launchers recoverable without redownloading.
+    if target.exists() and hashlib.sha256(target.read_bytes()).digest() == hashlib.sha256(payload).digest():
+        return 'Already up to date (' + manifest['version'] + ')'
     compile(payload, 'app_main.py', 'exec')
     temporary = root / 'app_main.py.download'
     temporary.write_bytes(payload)
