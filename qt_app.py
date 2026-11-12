@@ -2244,14 +2244,18 @@ class Desktop(QMainWindow):
                 import hashlib
                 commit=api('git/ref/heads/main')['object']['sha']
                 manifest=json.loads(remote_file('desktop-bundle.json',commit))
-                required={'app_main.py','hub.py','Launch Hub.vbs','Launch Hub.cmd','update.json'}
-                allowed=required|{'qt_app.py','qt_style.py','supervisor.py','supply_manager.py','requirements.txt','bundle.json'}
+                required={'app_main.py','hub.py','Launch Hub.vbs','Launch Hub.cmd','update.json','bot/Encounter ReBuilt/Encounter_ReBuilt.au3','bot/Encounter ReBuilt/Encounter_ReBuilt.exe'}
+                allowed=required|{'qt_app.py','qt_style.py','supervisor.py','supply_manager.py','requirements.txt','bundle.json','desktop-bundle.json','taco.ico',
+                    'bot/Encounter ReBuilt/Files/AddOns.au3','bot/Encounter ReBuilt/Files/GUI.au3','bot/Encounter ReBuilt/Files/ItemFilter.au3','bot/Encounter ReBuilt/Files/Launch.au3',
+                    'bot/Encounter ReBuilt/Files/Pathing.au3','bot/Encounter ReBuilt/Files/Security.au3','bot/Encounter ReBuilt/Files/SupplyManager.au3','bot/Encounter ReBuilt/Files/_Includes.au3',
+                    'bot/Encounter ReBuilt/Images/BannerGeneral.jpg','bot/Encounter ReBuilt/Images/BannerLootConfig.jpg','bot/Encounter ReBuilt/Images/BannerTradeConfig.jpg','bot/Encounter ReBuilt/Images/Encounter.ico'}
                 if manifest.get('format')!=1 or not required.issubset(manifest.get('files',{})) or not set(manifest.get('files',{})).issubset(allowed):
                     raise ValueError('GitHub returned an unsupported desktop update manifest')
                 mismatches=[]
                 for name,digest in manifest['files'].items():
                     if not isinstance(digest,str) or len(digest)!=64 or any(c not in '0123456789abcdef' for c in digest):
                         raise ValueError('Invalid SHA-256 in update manifest: '+name)
+                    if name.endswith('/Encounter_ReBuilt.exe'):continue  # Locally compiled AutoIt binaries are not byte-for-byte reproducible.
                     local=(ROOT.parent/Path(name[4:])) if name.startswith('bot/') else (ROOT/name)
                     if not local.is_file() or hashlib.sha256(local.read_bytes()).hexdigest()!=digest:mismatches.append(name)
                 available=bool(mismatches)
