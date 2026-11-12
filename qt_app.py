@@ -2274,6 +2274,13 @@ class Desktop(QMainWindow):
         self.update_worker=threading.Thread(target=work,daemon=False);self.update_worker.start()
 
     def restart(self):
+        # Update Now may have migrated the bot and staged a freshly compiled EXE.
+        # Reload its saved path before save() so the old in-memory path cannot undo migration.
+        try:
+            saved=json.loads(self.settings_path.read_text('utf-8'))
+            if saved.get('bot_path'):self.exe=Path(saved['bot_path'])
+            self.path_label.setText(str(self.exe))
+        except (OSError,ValueError):pass
         self.save();self.monitor_stop.set()
         def finish():
             if self.monitor_worker.is_alive():QTimer.singleShot(100,finish);return
