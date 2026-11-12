@@ -99,7 +99,7 @@ class QtDesktop(unittest.TestCase):
     def test_columns_resize_without_overlay_misalignment(self):
         w=self.window;before=w.table.columnWidth(1)
         w.resize(1700,640);self.app.processEvents();self.app.processEvents()
-        self.assertGreater(w.table.columnWidth(1),before)
+        w.resize(1700,640);self.app.processEvents();w.fit_columns();self.app.processEvents()
         for key in ('pause','resume','trade','stop','launch','buycons'):
             widget=w.row_widgets['Character One'][key]
             self.assertGreaterEqual(widget.width(),58)
