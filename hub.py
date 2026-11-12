@@ -33,7 +33,8 @@ def remote_file(path, commit):
     # Fetch from the immutable commit directly. The Contents API can return
     # stale/encoded metadata or truncate large files; raw.githubusercontent.com
     # returns the exact bytes that the bundle manifest was generated from.
-    path=urllib.parse.unquote(path)\n    raw='https://raw.githubusercontent.com/'+REPOSITORY+'/'+commit+'/'+urllib.parse.quote(path,safe='/')
+    path=urllib.parse.unquote(path)
+    raw='https://raw.githubusercontent.com/'+REPOSITORY+'/'+commit+'/'+urllib.parse.quote(path,safe='/')
     req=urllib.request.Request(raw,headers={'User-Agent':'EncounterHub'})
     with urllib.request.urlopen(req,timeout=120,context=https_context()) as response:
         return response.read()
