@@ -1234,6 +1234,7 @@ Func GUI_BotStateRender()
 
     If $g_i_BotState = $GC_I_BOTSTATE_RUN And $g_b_PauseRequested Then
         $l_s_StartLabel = "Force pause now"
+        $l_i_StartState = ($g_b_ForcePauseRequested ? $GUI_DISABLE : $GUI_ENABLE)
         $l_i_RenderingState = $GUI_ENABLE
 
     ElseIf $g_i_BotState <> $GC_I_BOTSTATE_RUN And $g_b_ResumeRequested Then
