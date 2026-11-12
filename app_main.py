@@ -73,7 +73,7 @@ def update_bundle(root=None, commit=None):
     for name,digest in manifest['files'].items():
         if not isinstance(digest,str) or not re.fullmatch('[0-9a-f]{64}',digest):raise ValueError('Invalid bundle hash: '+name)
         if name.startswith('bot/'):
-            relative=Path(name[4:])
+            relative=Path(name[len('bot/Encounter ReBuilt/'):])
             if relative.is_absolute() or '..' in relative.parts:raise ValueError('Unsafe bot update path')
             source='Encounter ReBuilt - PUBLIC/'+name[len('bot/Encounter ReBuilt/'):]
             target=(bot_root/'Encounter_ReBuilt.downloaded.exe') if name.endswith('/Encounter_ReBuilt.exe') else bot_root/relative
