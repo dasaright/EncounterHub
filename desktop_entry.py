@@ -27,7 +27,7 @@ import PySide6.QtCore
 import PySide6.QtGui
 import PySide6.QtWidgets
 
-ROOT=Path(sys.executable).parent if getattr(sys,'frozen',False) else Path(__file__).parent
+ROOT=Path(getattr(sys,'_MEIPASS',Path(sys.executable).parent)) if getattr(sys,'frozen',False) else Path(__file__).parent
 sys.path.insert(0,str(ROOT))
 for name in ('hub','app_main','supervisor','qt_style','qt_app'):
     path=ROOT/(name+'.py')
