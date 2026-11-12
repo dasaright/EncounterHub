@@ -17,10 +17,12 @@ jobs:
         run: python -m pip install -r requirements.txt pyinstaller
       - name: Tests
         run: python -m unittest discover -s tests -v
+      - name: Refresh versioned update manifests
+        run: python tools/build_manifest.py
       - name: Prepare Encounter Hub icon
         run: python -c "from pathlib import Path; from qt_app import write_app_icon; write_app_icon(Path('.'))"
       - name: Build windowless desktop
-        run: pyinstaller --clean --noconfirm --onedir --windowed --name EncounterHub --icon taco.ico desktop_entry.py
+        run: pyinstaller --clean --noconfirm --onedir --windowed --name EncounterHub --icon taco.ico --collect-data certifi desktop_entry.py
       - name: Copy updateable modules
         shell: pwsh
         run: |

@@ -206,14 +206,29 @@ Func Supply_Run($manual)
         $g_b_SupplyBusy=False
         Return False
     EndIf
+    AddOns_Out("[SUPPLY] Approaching Foreman the Crier to reach the central NPC area")
+    If Not Supply_Talk("Foreman the Crier") Then
+        AddOns_Out("[SUPPLY] Routine stopped: could not reach Foreman the Crier")
+        If $oldState=$GC_I_BOTSTATE_RUN Then $g_i_BotState=$GC_I_BOTSTATE_RUN
+        $g_b_SupplyBusy=False
+        Return False
+    EndIf
+    Sleep(1000)
     Local $profileSection="Character:"&Supply_CharacterName()
     Local $profile=IniRead(Supply_ConfigPath(),$profileSection,$manual ? "ManualProfile" : "AutomaticProfile","Full Conset")
+    Local $success=True
     If $manual Then
         Local $min=Number(IniRead(Supply_ConfigPath(),"Supply","MinimumEctoSellPrice","0"))
         If $profile<>"Full Conset" Or Supply_ManualConsetOK() Then
-            If Supply_SellEctos($min) Then Supply_Produce($profile)
+            If Supply_SellEctos($min) Then
+                Supply_Produce($profile)
+            Else
+                $success=False
+                AddOns_Out("[SUPPLY] Routine stopped: required merchant interaction failed")
+            EndIf
         Else
-            AddOns_Out("[SUPPLY] Full Conset exceeds the 80% ecto value limit; stopping")
+            $success=False
+            AddOns_Out("[SUPPLY] Routine stopped: Full Conset price check failed or required NPC was unavailable")
         EndIf
     Else
         Local $threshold=Number(IniRead(Supply_ConfigPath(),"Supply","BankGoldThreshold","800000"))
@@ -226,10 +241,14 @@ Func Supply_Run($manual)
             Supply_Produce($profile)
         EndIf
     EndIf
-    AddOns_Out("[SUPPLY] Routine complete")
+    If $success Then
+        AddOns_Out("[SUPPLY] Routine complete")
+    Else
+        AddOns_Out("[SUPPLY] Routine ended with errors; see messages above")
+    EndIf
     If $oldState=$GC_I_BOTSTATE_RUN Then $g_i_BotState=$GC_I_BOTSTATE_RUN
     $g_b_SupplyBusy=False
-    Return True
+    Return $success
 EndFunc
 Func Supply_CheckManualRequest()
     If $g_b_SupplyBusy Then Return False

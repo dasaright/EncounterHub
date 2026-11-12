@@ -25,6 +25,16 @@ class Commands(unittest.TestCase):
         self.assertEqual(command_action('Resume',{'Resume':1})[0],'Resume')
 
 class Updates(unittest.TestCase):
+    def test_api_uses_verified_certifi_ca_bundle(self):
+        import ssl
+        from unittest.mock import Mock
+        response=Mock();response.__enter__.return_value=response;response.read.return_value=b'{}'
+        with patch.object(hub.urllib.request,'urlopen',return_value=response) as urlopen:
+            self.assertEqual(hub.api('rate_limit'),{})
+        context=urlopen.call_args.kwargs['context']
+        self.assertEqual(context.verify_mode,ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
+        self.assertGreater(context.cert_store_stats()['x509_ca'],0)
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
         self.addCleanup(self.temp.cleanup)

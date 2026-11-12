@@ -7,10 +7,17 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import ssl
+import certifi
 import urllib.request
 import urllib.parse
 
 HUB_BUNDLE_SUPPORT = True
+
+
+def https_context():
+    """Use certifi's maintained CA bundle for verified HTTPS in frozen builds."""
+    return ssl.create_default_context(cafile=certifi.where())
 REPOSITORY = 'dasaright/EncounterHub'
 ROOT = Path(sys.executable).resolve().parent if getattr(sys,'frozen',False) else Path(__file__).resolve().parent
 
@@ -18,7 +25,7 @@ ROOT = Path(sys.executable).resolve().parent if getattr(sys,'frozen',False) else
 def api(path):
     req = urllib.request.Request('https://api.github.com/repos/' + REPOSITORY + '/' + path,
                                  headers={'User-Agent': 'EncounterHub', 'Accept': 'application/vnd.github+json'})
-    with urllib.request.urlopen(req, timeout=8) as response:
+    with urllib.request.urlopen(req, timeout=8, context=https_context()) as response:
         return json.loads(response.read(2_000_000))
 
 
@@ -90,7 +97,7 @@ def install_desktop():
     hash_url=assets['EncounterHub-Windows.zip.sha256']['browser_download_url']
     def download(address):
         req=urllib.request.Request(address,headers={'User-Agent':'EncounterHub'})
-        with urllib.request.urlopen(req,timeout=120) as response:return response.read()
+        with urllib.request.urlopen(req,timeout=120,context=https_context()) as response:return response.read()
     payload=download(url);digest=download(hash_url).decode().split()[0]
     if hashlib.sha256(payload).hexdigest()!=digest:raise RuntimeError('Executable download hash mismatch')
     target=Path(os.environ['LOCALAPPDATA'])/'EncounterHub'/'Desktop'
