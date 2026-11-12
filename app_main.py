@@ -540,7 +540,7 @@ class Hub:
                         self.tree.set(name,'command','Owned clients still open; close hub before relaunch');continue
                     self.retired.append(old['process'])
                 p=JobProcess(self.exe)
-                self.sessions[name]=dict(process=p,phase='select',deadline=time.monotonic()+90,pending=None,command_deadline=0,sent_at=0,window=None,controls=None,next_games=0,stopping=False,stop_phase=None,options={},option_requests={},next_options=0)
+                self.sessions[name]=dict(process=p,phase='select',deadline=time.monotonic()+90,pending=None,command_deadline=0,sent_at=0,pending_sent=False,window=None,controls=None,next_games=0,stopping=False,stop_phase=None,options={},option_requests={},next_options=0)
                 self.tree.set(name,'status','Opening bot...');self.tree.set(name,'pid',p.pid);self.tree.set(name,'command','');self.tree.set(name,'games','')
             except OSError as exc:self.tree.set(name,'status',str(exc))
 
