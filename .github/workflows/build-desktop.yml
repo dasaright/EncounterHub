@@ -29,15 +29,15 @@ jobs:
       - name: Copy updateable modules
         shell: pwsh
         run: |
-          Copy-Item hub.py,app_main.py,qt_app.py,qt_style.py,supervisor.py,supply_manager.py,requirements.txt,update.json,bundle.json,desktop-bundle.json,taco.ico dist/EncounterHub/
-          Copy-Item 'Launch Hub.vbs','Launch Hub.cmd' dist/EncounterHub/
+          $internal = 'dist/EncounterHub/_internal'
+          New-Item -ItemType Directory -Force -Path $internal | Out-Null
+          Copy-Item hub.py,app_main.py,qt_app.py,qt_style.py,supervisor.py,supply_manager.py,requirements.txt,update.json,bundle.json,desktop-bundle.json,taco.ico "$internal/"
+          Copy-Item 'Launch Hub.vbs','Launch Hub.cmd' "$internal/"
           $bot = 'dist/EncounterHub/Encounter ReBuilt'
           New-Item -ItemType Directory -Force -Path "$bot/Files","$bot/Images","$bot/Config" | Out-Null
-          Copy-Item 'Encounter ReBuilt - PUBLIC/Encounter_ReBuilt.au3' "$bot/"
+          Copy-Item 'Encounter ReBuilt - PUBLIC/Encounter_ReBuilt.au3','Encounter ReBuilt - PUBLIC/Encounter_ReBuilt.exe' "$bot/"
           Copy-Item 'Encounter ReBuilt - PUBLIC/Files/*' "$bot/Files/" -Recurse
-          if (Test-Path 'Encounter ReBuilt - PUBLIC/Images') {
-            Copy-Item 'Encounter ReBuilt - PUBLIC/Images/*' "$bot/Images/" -Recurse
-          }
+          Copy-Item 'Encounter ReBuilt - PUBLIC/Images/*' "$bot/Images/" -Recurse
       - name: Packaged supervisor integration
         shell: pwsh
         run: |
@@ -66,5 +66,5 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag EncounterHub-Windows.zip EncounterHub-Windows.zip.sha256 --clobber --repo $env:GITHUB_REPOSITORY
           } else {
-            gh release create $tag EncounterHub-Windows.zip EncounterHub-Windows.zip.sha256 --target $env:GITHUB_SHA --title "Encounter Hub $version" --notes 'Includes the complete Windows desktop app, updater files, and full Encounter ReBuilt - PUBLIC AutoIt source folder. Compile Encounter_ReBuilt.au3 with AutoIt to rebuild the bot executable.' --repo $env:GITHUB_REPOSITORY
+            gh release create $tag EncounterHub-Windows.zip EncounterHub-Windows.zip.sha256 --target $env:GITHUB_SHA --title "Encounter Hub $version" --notes 'Includes EncounterHub.exe, its _internal runtime folder, and the Encounter ReBuilt bot folder with source and compiled bot.' --repo $env:GITHUB_REPOSITORY
           }
