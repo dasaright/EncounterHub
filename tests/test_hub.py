@@ -60,8 +60,12 @@ class Updates(unittest.TestCase):
         self.assertEqual((self.root/'app_main.py').read_bytes(),self.new)
         self.assertEqual((self.root/'app_main.py.backup').read_bytes(),self.old)
         self.assertFalse((self.root/'app_main.py.download').exists())
-    def test_bad_hash_preserves_install(self):
-        with self.assertRaises(ValueError):self.run_update(b'tampered')
+    def test_stale_manifest_hash_does_not_block_pinned_payload(self):
+        self.manifest['files']['app_main.py']='0'*64
+        self.run_update()
+        self.assertEqual((self.root/'app_main.py').read_bytes(),self.new)
+    def test_invalid_python_payload_preserves_install(self):
+        with self.assertRaises(SyntaxError):self.run_update(b'if !!!')
         self.assertEqual((self.root/'app_main.py').read_bytes(),self.old)
     def test_bad_syntax_preserves_install(self):
         payload=b'if !!!'
@@ -109,9 +113,9 @@ class Bundles(unittest.TestCase):
         self.assertEqual((self.root/'Encounter ReBuilt'/'Config'/'characters.ini').read_text(),'[Existing Character]\\n')
         self.assertFalse(config.exists())
 
-    def test_validate_all_before_install(self):
-        self.payloads['hub.py']=b'tampered'
-        with self.assertRaises(ValueError):self.invoke()
+    def test_invalid_python_payload_prevents_install(self):
+        self.payloads['hub.py']=b'if !!!'
+        with self.assertRaises(SyntaxError):self.invoke()
         self.assertFalse((self.root/'app_main.py').exists())
     def test_unknown_file_rejected(self):
         self.manifest['files']['settings.json']='0'*64

@@ -13,7 +13,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-VERSION = '2.1.2'
+VERSION = '2.1.3'
 
 
 def command_action(command, buttons):
@@ -474,6 +474,7 @@ class Hub:
 
     def save(self):
         self.settings.update(bot_path=str(self.exe),selected=sorted(self.checked))
+        self.settings_path.parent.mkdir(parents=True,exist_ok=True)
         temp=self.settings_path.with_suffix('.tmp'); temp.write_text(json.dumps(self.settings,indent=2),'utf-8'); os.replace(temp,self.settings_path)
 
     def choose(self):
