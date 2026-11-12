@@ -4,7 +4,7 @@ Native Windows application for controlling multiple Encounter ReBuilt bots, styl
 
 ## Install / taskbar
 
-Download **EncounterHub-Windows.zip** from [Releases](https://github.com/dasaright/EncounterHub/releases/latest), extract the whole EncounterHub folder to a permanent writable location, and run **EncounterHub.exe**. No Python installation is required. Right-click its running taskbar icon and choose **Pin to taskbar**. The Application menu can also create a desktop shortcut. Keep the `_internal` folder and adjacent Python files; the executable loads updateable modules from beside itself.
+Download **EncounterHub-Windows.zip** from [Releases](https://github.com/dasaright/EncounterHub/releases/latest), extract the whole EncounterHub folder to a permanent writable location, and run **EncounterHub.exe**. No Python installation is required. The main folder contains only `EncounterHub.exe`, `_internal`, and `Encounter ReBuilt`. Python support files and update manifests live in `_internal`; the bot source, compiled bot, Images, and Config live in `Encounter ReBuilt`. Right-click the running taskbar icon and choose **Pin to taskbar**.
 
 Existing script installations migrate to the executable automatically after updating and reopening. Settings stay in `%LOCALAPPDATA%\EncounterHub\settings.json`.
 
@@ -16,7 +16,7 @@ Stop waits for that bot executable to exit, then closes its owned game clients. 
 
 ## Updates without interrupting bots
 
-**Check for Updates** is above **Update Now**. Checking does not install code. When a newer bundle is available, Update Now downloads and validates every file from the commit that was checked, installs with rollback, and restarts only the hub GUI. The background supervisor retains ownership of active bots and games, and the reopened hub detects and reconnects those sessions automatically. Queued GUI commands are cancelled at restart; processes continue uninterrupted. Regular Close still stops owned sessions.
+**Check for Updates** is above **Update Now**. Checking does not install code. When a newer bundle is available, Update Now downloads and validates the desktop and AutoIt bot files from the same commit, migrates old root-level support files and the existing Config folder into the clean layout, installs with rollback, attempts to recompile the AutoIt bot with the local Aut2Exe compiler, updates the saved bot path, and restarts only the hub GUI. If the old bot executable is still in use, the new executable is staged alongside it and used for future launches. The background supervisor retains ownership of active bots and games, and the reopened hub detects and reconnects those sessions automatically. Queued GUI commands are cancelled at restart; processes continue uninterrupted. Regular Close still stops owned sessions.
 
 If the GUI unexpectedly exits, reopen the executable and it reconnects to the supervisor's active sessions. It does not claim or close unrelated manually launched Guild Wars clients. The local supervisor uses an authenticated loopback socket and stores its endpoint in `%LOCALAPPDATA%\EncounterHub\supervisor.json`. Do not manually delete that file while sessions are running.
 
