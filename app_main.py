@@ -80,6 +80,11 @@ def update_bundle(root=None, commit=None):
         else:source=name;target=module_root/name
         destinations[name]=target
         if target.is_file() and hashlib.sha256(target.read_bytes()).hexdigest()==digest:continue
+        # The bundled EXE is only a fallback for fresh installs. Existing installs
+        # recompile the updated AU3 source locally; downloading the binary on every
+        # update is unreliable for GitHub's large/binary contents endpoint.
+        if name.endswith('/Encounter_ReBuilt.exe') and (bot_root/'Encounter_ReBuilt.exe').is_file():
+            continue
         payload=remote_file(quote(source,safe='/'),commit)
         if hashlib.sha256(payload).hexdigest()!=digest:raise ValueError('Bundle hash mismatch: '+name)
         if name.endswith('.py'):compile(payload,name,'exec')
@@ -160,7 +165,11 @@ def update_bundle(root=None, commit=None):
                 except PermissionError:
                     bot_exe=bot_root/'Encounter_ReBuilt.updated.exe';os.replace(downloaded_exe,bot_exe)
             compile_note='AutoIt compiler was found but compilation failed; the included updated executable was retained. '+(result.stderr or result.stdout or '').strip()[-500:]
-    else:compile_note='AutoIt compiler was not found; the included updated executable is ready, but local recompilation was skipped.'
+    else:
+        if downloaded_exe.exists():
+            compile_note='AutoIt compiler was not found; the included updated executable is ready, but local recompilation was skipped.'
+        else:
+            compile_note='AutoIt compiler was not found; the existing bot executable was retained, but the updated AutoIt source has not been compiled.'
 
     settings_path=Path(os.environ.get('LOCALAPPDATA',str(Path.home())))/'EncounterHub'/'settings.json'
     if settings_path.is_file():
