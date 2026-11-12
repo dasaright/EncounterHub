@@ -29,7 +29,7 @@ The Supply Manager window holds shared replenishment thresholds and market-price
 
 ## Development
 
-Install `requirements.txt` for source development, run `hub.py`, and use `python -m unittest discover -s tests -v`. To publish app changes, bump VERSION in app_main.py and run `python tools/build_manifest.py`, then commit code and all three manifests together. GitHub Actions tests Windows ownership/reconnection and Qt controls, builds a windowless PyInstaller executable, smoke-tests it, and publishes a release ZIP plus SHA-256. Runtime source updates do not change the packaged Python/Qt runtime; changes to runtime dependencies need a new executable build.
+Install `requirements.txt` for source development, run `hub.py`, and use `python -m unittest discover -s tests -v`. To publish app changes, bump VERSION in app_main.py and push to `main`. GitHub Actions regenerates all three update manifests, builds the Windows desktop ZIP, and publishes a versioned GitHub Release with a SHA-256 file. Each version tag is published only once; ordinary commits without a version bump do not replace an existing release. Runtime source updates do not change the packaged Python/Qt runtime; changes to runtime dependencies need a new executable build.
 
 The legacy `bundle.json` remains a five-file migration manifest so 1.x Check for Updates can install the upgraded bootstrap. The native desktop checks `desktop-bundle.json` for the full Qt application.
 
