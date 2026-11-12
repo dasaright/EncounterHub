@@ -48,7 +48,8 @@ jobs:
           $version = $Matches[1]
           "value=$version" >> $env:GITHUB_OUTPUT
           git fetch --tags
-          if (git rev-parse "refs/tags/v$version" 2>$null) {
+          $existingTag = git tag --list "v$version"
+          if ($existingTag) {
             "publish=false" >> $env:GITHUB_OUTPUT
           } else {
             "publish=true" >> $env:GITHUB_OUTPUT
