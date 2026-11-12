@@ -2365,6 +2365,16 @@ Func Quest18_ForcePauseReturn()
     Return True
 EndFunc
 
+Func Quest18_ForcePauseReturn()
+    If Not $g_b_ForcePauseRequested Then Return False
+    AddOns_Out("[INFO] Force pause: aborting remaining run steps")
+    If Map_GetMapID() <> $GC_I_MAP_ID_OUTPOST And Map_GetMapID() <> $GC_I_MAP_ID_OUTPOST_EVENT Then
+        AddOns_Out("[INFO] Force pause: travelling to Kaineng Center")
+        If Not HeartbeatTravel($GC_I_MAP_ID_OUTPOST) Then Return False
+    EndIf
+    Return True
+EndFunc
+
 Func Quest18()
     AddOns_PurgeHook()
 
@@ -2387,7 +2397,10 @@ Func Quest18()
     If $l_i_MapID <> $GC_I_MAP_ID_OUTPOST And $l_i_MapID <> $GC_I_MAP_ID_OUTPOST_EVENT Then
 		AddOns_Out("[WARN] Player located on wrong map: " & $g_as_MapLabels[$l_i_MapID])
         AddOns_Out("[INFO] Travelling to Kaineng Center")
-        If Not HeartbeatTravel($GC_I_MAP_ID_OUTPOST) Then Return SetError(1, 0, False)
+        If Not HeartbeatTravel($GC_I_MAP_ID_OUTPOST) Then
+            If Quest18_ForcePauseReturn() Then Return True
+            Return SetError(1, 0, False)
+        EndIf
     EndIf
 
     AddOns_Out("[INFO] Starting run #" & ($g_i_Count_Runs + 1))
@@ -2465,7 +2478,10 @@ Func Quest18()
     EndIf
 
     AddOns_Out("[INFO] Travelling to Kaineng Center")
-    If Not HeartbeatTravel($GC_I_MAP_ID_OUTPOST) Then Return SetError(1, 0, False)
+    If Not HeartbeatTravel($GC_I_MAP_ID_OUTPOST) Then
+            If Quest18_ForcePauseReturn() Then Return True
+            Return SetError(1, 0, False)
+        EndIf
 
     Return True
 EndFunc   ;==>Quest18
