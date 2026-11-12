@@ -198,6 +198,7 @@ Func Supply_Run($manual)
     If $g_b_SupplyBusy Then Return False
     $g_b_SupplyBusy=True
     Local $oldState=$g_i_BotState
+    Local $l_b_SupplySuccess=True
     ; Skip normal pause cleanup; the next Quest18 run will travel back to Kaineng.
     $g_i_BotState=$GC_I_BOTSTATE_IDLE
     AddOns_Out("[SUPPLY] Travelling to Embark Beach (American district)")
@@ -216,18 +217,18 @@ Func Supply_Run($manual)
     Sleep(1000)
     Local $profileSection="Character:"&Supply_CharacterName()
     Local $profile=IniRead(Supply_ConfigPath(),$profileSection,$manual ? "ManualProfile" : "AutomaticProfile","Full Conset")
-    Local $success=True
+    
     If $manual Then
         Local $min=Number(IniRead(Supply_ConfigPath(),"Supply","MinimumEctoSellPrice","0"))
         If $profile<>"Full Conset" Or Supply_ManualConsetOK() Then
             If Supply_SellEctos($min) Then
                 Supply_Produce($profile)
             Else
-                $success=False
+                $l_b_SupplySuccess=False
                 AddOns_Out("[SUPPLY] Routine stopped: required merchant interaction failed")
             EndIf
         Else
-            $success=False
+            $l_b_SupplySuccess=False
             AddOns_Out("[SUPPLY] Routine stopped: Full Conset price check failed or required NPC was unavailable")
         EndIf
     Else
@@ -241,14 +242,14 @@ Func Supply_Run($manual)
             Supply_Produce($profile)
         EndIf
     EndIf
-    If $success Then
+    If $l_b_SupplySuccess Then
         AddOns_Out("[SUPPLY] Routine complete")
     Else
         AddOns_Out("[SUPPLY] Routine ended with errors; see messages above")
     EndIf
     If $oldState=$GC_I_BOTSTATE_RUN Then $g_i_BotState=$GC_I_BOTSTATE_RUN
     $g_b_SupplyBusy=False
-    Return $success
+    Return $l_b_SupplySuccess
 EndFunc
 Func Supply_CheckManualRequest()
     If $g_b_SupplyBusy Then Return False
