@@ -2136,6 +2136,9 @@ class Desktop(QMainWindow):
         elif key=='buycons':self.request_supply_purchase(name)
         elif key=='stop':
             self.paused_accounts.discard(name);self.update_buycons_button(name);self.stop([name])
+        elif key=='pause':
+            button=self.row_widgets.get(name,{}).get('pause')
+            self.command('Force Pause' if button and button.text()=='Force pause now' else 'Pause',[name])
         else:self.command('Trade Mode' if key=='trade' else key.title(),[name])
 
     def checkbox(self,name,key,checked):
