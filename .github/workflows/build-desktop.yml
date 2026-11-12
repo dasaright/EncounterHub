@@ -31,7 +31,13 @@ jobs:
         run: |
           Copy-Item hub.py,app_main.py,qt_app.py,qt_style.py,supervisor.py,supply_manager.py,requirements.txt,update.json,bundle.json,desktop-bundle.json,taco.ico dist/EncounterHub/
           Copy-Item 'Launch Hub.vbs','Launch Hub.cmd' dist/EncounterHub/
-          Copy-Item 'Encounter ReBuilt - PUBLIC' dist/EncounterHub/ -Recurse
+          $bot = 'dist/EncounterHub/Encounter ReBuilt'
+          New-Item -ItemType Directory -Force -Path "$bot/Files","$bot/Images","$bot/Config" | Out-Null
+          Copy-Item 'Encounter ReBuilt - PUBLIC/Encounter_ReBuilt.au3' "$bot/"
+          Copy-Item 'Encounter ReBuilt - PUBLIC/Files/*' "$bot/Files/" -Recurse
+          if (Test-Path 'Encounter ReBuilt - PUBLIC/Images') {
+            Copy-Item 'Encounter ReBuilt - PUBLIC/Images/*' "$bot/Images/" -Recurse
+          }
       - name: Packaged supervisor integration
         shell: pwsh
         run: |
