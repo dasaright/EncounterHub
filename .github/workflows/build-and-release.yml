@@ -41,15 +41,24 @@ jobs:
         run: |
           $source = Get-Content app_main.py -Raw
           if ($source -notmatch "VERSION\s*=\s*'([^']+)'") { throw "Could not read VERSION from app_main.py" }
-          "value=$($Matches[1])" >> $env:GITHUB_OUTPUT
+          $version = $Matches[1]
+          "value=$version" >> $env:GITHUB_OUTPUT
+          git fetch --tags
+          if (git rev-parse "refs/tags/v$version" 2>$null) {
+            "publish=false" >> $env:GITHUB_OUTPUT
+          } else {
+            "publish=true" >> $env:GITHUB_OUTPUT
+          }
 
       - name: Install desktop dependencies
+        if: steps.version.outputs.publish == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
 
       - name: Build Windows desktop
+        if: steps.version.outputs.publish == 'true'
         shell: pwsh
         run: |
           pyinstaller --noconfirm --clean --windowed --onedir --name EncounterHub --icon taco.ico --collect-all PySide6 --collect-all shiboken6 --hidden-import app_main --hidden-import qt_app --hidden-import qt_style --hidden-import supervisor --hidden-import supply_manager --hidden-import certifi hub.py
@@ -63,6 +72,7 @@ jobs:
           "$hash  EncounterHub-Windows.zip" | Set-Content -NoNewline "EncounterHub-Windows.zip.sha256"
 
       - name: Publish versioned release
+        if: steps.version.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.value }}
