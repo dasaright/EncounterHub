@@ -9,11 +9,11 @@ Windows Python launcher for multiple instances of the existing Encounter ReBuilt
 3. Double-click **Launch Hub.vbs**, accept the administrator prompt, then choose your existing `Encounter_ReBuilt.exe`.
 4. Check any number of characters and click **Launch Selected**.
 
-No pip dependencies or AutoIt installation are required. Keep `hub.py`, `app_main.py`, and `Launch Hub.vbs` together. The VBS launcher uses windowless Python so no black console stays open. Create a desktop shortcut to `Launch Hub.vbs` if desired. The older CMD entry point forwards to this launcher, but may briefly show a console; use the VBS file directly to avoid it entirely. The original bot and its Config/Files/Images stay in their existing folder.
+No pip dependencies or AutoIt installation are required. Keep `hub.py`, `app_main.py`, and `Launch Hub.vbs` together. The VBS launcher uses windowless Python so no black console stays open. Create a desktop shortcut to `Launch Hub.vbs` if desired. The older CMD entry point forwards to this launcher, but may briefly show a console; use the VBS file directly to avoid it entirely. The packaged bot lives in the `Encounter ReBuilt` subfolder. Keep `Encounter_ReBuilt.au3`, `Files`, `Images`, and `Config` together there. Keep the parent `GwAu3/API` folder in place; the script includes it through `../../../API/_GwAu3.au3`.
 
 ## Commands
 
-Use the same checked characters for **Pause**, **Resume**, **Trade Mode**, **Open Lockboxes**, **Show**, or **Stop**.
+Use the same checked characters for **Pause**, **Resume**, **Trade Mode**, **Open Lockboxes**, **Show**, or **Stop**. When a normal pause is queued, the bot's Pause button changes to **Force pause now**; pressing it stops the remaining run steps, returns to Kaineng Center, and enters the normal pause cleanup.
 Trade and lockbox requests pause farming, wait for the current run to finish, then select that mode. Already active modes are not toggled off. Trade Mode honors the original bot's restrictions (including Guild Hall sell location). A new command replaces the previous queued request. Waiting commands time out after 30 minutes.
 
 Stop force-stops the selected bot processes, leaving Guild Wars open. Closing the hub leaves bots running but cancels commands still queued in the hub. Only bots launched in the current hub session are controlled; existing bot instances are not adopted. Close previous bot instances before launching those characters again. Use separate accounts for simultaneous game sessions.
