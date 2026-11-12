@@ -39,7 +39,7 @@ Func Supply_Count($model)
     Return AddOns_GetInventoryItemCountbyModelID($model,True)
 EndFunc
 Func Supply_BuyMats($item)
-    Local $models[5]=[$GC_I_MODELID_BONES,$GC_I_MODELID_PLANT_FIBERS,$GC_I_MODELID_DUST,$GC_I_MODELID_FEATHERS,$GC_I_MODELID_IRON]
+    Local $models[5]=[$GC_I_MODELID_BONES,$GC_I_MODELID_PLANT_FIBRES,$GC_I_MODELID_DUST,$GC_I_MODELID_FEATHERS,$GC_I_MODELID_IRON]
     Local $need[5]
     Switch $item
         Case "Essence of Celerity"
@@ -80,7 +80,7 @@ Func Supply_Craft($item)
             $npc="Edwin"
             $recipe[0][0]=$GC_I_MODELID_BONES
             $recipe[0][1]=25
-            $recipe[1][0]=$GC_I_MODELID_PLANT_FIBERS
+            $recipe[1][0]=$GC_I_MODELID_PLANT_FIBRES
             $recipe[1][1]=25
         Case "Grail of Might"
             $model=$GC_I_MODELID_GRAIL_OF_MIGHT
