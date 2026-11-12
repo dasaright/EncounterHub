@@ -7,6 +7,7 @@ from pathlib import Path
 import queue
 import re
 import subprocess
+import sys
 import threading
 import time
 import tkinter as tk
@@ -151,9 +152,13 @@ def update_bundle(root=None, commit=None):
             try:
                 os.replace(temporary,bot_exe);downloaded_exe.unlink(missing_ok=True);compile_note='AutoIt bot recompiled successfully.'
             except PermissionError:
-                bot_exe=bot_root/'Encounter_ReBuilt.updated.exe';os.replace(temporary,bot_exe);compile_note='AutoIt bot recompiled successfully and was staged because the previous bot instance still has its executable open.'
+                bot_exe=bot_root/'Encounter_ReBuilt.updated.exe';os.replace(temporary,bot_exe);downloaded_exe.unlink(missing_ok=True);compile_note='AutoIt bot recompiled successfully and was staged because the previous bot instance still has its executable open.'
         else:
             temporary.unlink(missing_ok=True)
+            if downloaded_exe.exists():
+                try:os.replace(downloaded_exe,bot_exe)
+                except PermissionError:
+                    bot_exe=bot_root/'Encounter_ReBuilt.updated.exe';os.replace(downloaded_exe,bot_exe)
             compile_note='AutoIt compiler was found but compilation failed; the included updated executable was retained. '+(result.stderr or result.stdout or '').strip()[-500:]
     else:compile_note='AutoIt compiler was not found; the included updated executable is ready, but local recompilation was skipped.'
 
@@ -582,7 +587,7 @@ class Hub:
                         key,desired=command;s.setdefault('option_sent',set()).discard(key);s['option_requests'][key]=(desired,time.monotonic()+10)
                         s['next_options']=0
                     elif not s['stopping']:
-                        s.update(pending=command,command_deadline=time.monotonic()+1800,sent_at=0)
+                        s.update(pending=command,command_deadline=time.monotonic()+1800,sent_at=0,pending_sent=False)
             except queue.Empty:pass
             for name,s in list(self.sessions.items()):
                 if self.monitor_stop.is_set():break
@@ -694,6 +699,11 @@ class Hub:
             self.report(name,'command','Paused' if 'Resume' in buttons else 'Running' if 'Pause' in buttons else '')
             return
         if time.monotonic()>s['command_deadline']:self.report(name,'command','Command timed out');s['pending']=None;return
+        if command=='Force Pause' and s.get('pending_sent'):
+            if 'Resume' in buttons:
+                self.report(name,'command','Paused');s['pending']=None;s['pending_sent']=False
+            else:self.report(name,'command','Force pause in progress')
+            return
         if time.monotonic()-s['sent_at']<2:return
         target,status,done=command_action(command,buttons)
         self.report(name,'command',status)
@@ -701,6 +711,7 @@ class Hub:
         if target and target in buttons:
             if self.native.click(buttons[target]):
                 s['sent_at']=time.monotonic();self.report(name,'command',target+' sent')
+                if target=='Force pause now':s['pending_sent']=True
                 if target not in ('Pause','Force pause now'):s['pending']=None
             elif target not in ('Pause','Force pause now'):self.report(name,'command',target+' unavailable in bot');s['pending']=None
 
