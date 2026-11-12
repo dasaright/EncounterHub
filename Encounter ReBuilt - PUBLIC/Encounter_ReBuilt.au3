@@ -13,7 +13,7 @@
 ; Note: All native AutoIt includes are covered by GwAu3/API/_GwAu3.au3 which should always be included in the main script.
 ;       The same applies to GwAu3 API-specific includes. Other includes containing script-specific files are covered
 ;       by Files/_Includes.au3.
-#include "../../API/_GwAu3.au3"
+#include "../../../API/_GwAu3.au3"
 #include "Files/_Includes.au3"
 ; ===============================================================================================================================
 #EndRegion Includes
@@ -50,6 +50,7 @@ Global $g_i_BotState = $GC_I_BOTSTATE_INIT
 
 Global $g_b_BotInitialized = False
 Global $g_b_PauseRequested = False
+Global $g_b_ForcePauseRequested = False
 Global $g_b_ResumeRequested = False
 Global $g_b_AutoTradeReady = False
 Global $g_b_AutoTradeLeave = False
@@ -3634,9 +3635,14 @@ Func Main()
 
 	AddOns_Out("[INFO] Preparing party setup")
     HeartbeatStep("SetupEncounter", "SetupEncounter")
-	If $g_b_PauseRequested Then
-		$g_b_PauseRequested = False
-		GUI_SetBotState($GC_I_BOTSTATE_IDLE)
+	If $g_b_ForcePauseRequested Then
+	    $g_b_ForcePauseRequested = False
+	    $g_b_PauseRequested = False
+	    AddOns_Out("[INFO] Force pause requested; returned to Kaineng Center")
+	    GUI_SetBotState($GC_I_BOTSTATE_IDLE)
+	ElseIf $g_b_PauseRequested Then
+	    $g_b_PauseRequested = False
+	    GUI_SetBotState($GC_I_BOTSTATE_IDLE)
 	EndIf
 
     While True
