@@ -22,6 +22,17 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Refresh versioned update manifests
         run: python tools/build_manifest.py
+      - name: Commit refreshed update manifests
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add update.json bundle.json desktop-bundle.json
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "Refresh Encounter Hub update manifests"
+            git push
+          }
       - name: Prepare Encounter Hub icon
         run: python -c "from pathlib import Path; from qt_app import write_app_icon; write_app_icon(Path('.'))"
       - name: Build windowless desktop
