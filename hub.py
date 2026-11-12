@@ -34,7 +34,8 @@ def remote_file(path, commit):
     if data.get('encoding') == 'base64':
         return base64.b64decode(data['content'])
     if data.get('download_url'):
-        req=urllib.request.Request(data['download_url'],headers={'User-Agent':'EncounterHub'})
+        raw='https://raw.githubusercontent.com/'+REPOSITORY+'/'+commit+'/'+urllib.parse.quote(path,safe='/')
+        req=urllib.request.Request(raw,headers={'User-Agent':'EncounterHub'})
         with urllib.request.urlopen(req,timeout=120,context=https_context()) as response:return response.read()
     raise ValueError('Unexpected GitHub file encoding')
 
