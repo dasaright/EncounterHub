@@ -12,7 +12,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-VERSION = '2.0.9'
+VERSION = '2.1.0'
 
 
 def command_action(command, buttons):
@@ -45,45 +45,125 @@ def command_action(command, buttons):
 
 
 def update_bundle(root=None, commit=None):
-    """Install the complete allowlisted launcher bundle, with rollback on failure."""
-    import hashlib
+    """Install desktop and AutoIt updates, migrate legacy files, then rebuild the bot."""
+    import hashlib, shutil
     from urllib.parse import quote
-    from hub import api, remote_file, ROOT
-    root = ROOT if root is None else Path(root)
-    commit = commit or api('git/ref/heads/main')['object']['sha']
-    manifest = json.loads(remote_file('desktop-bundle.json', commit))
-    required = {'app_main.py', 'hub.py', 'Launch Hub.vbs', 'Launch Hub.cmd', 'update.json'}
-    allowed = required | {'qt_app.py','qt_style.py','supervisor.py','supply_manager.py','requirements.txt','bundle.json'}
-    if manifest.get('format') != 1 or not required.issubset(manifest.get('files', {})) or not set(manifest.get('files', {})).issubset(allowed):
-        raise ValueError('Unsupported launcher bundle')
-    payloads = {}
-    for name, digest in manifest['files'].items():
-        if not isinstance(digest, str) or not re.fullmatch('[0-9a-f]{64}', digest):
-            raise ValueError('Invalid bundle hash')
-        local = root / name
-        if local.exists() and hashlib.sha256(local.read_bytes()).hexdigest() == digest:
-            continue
-        payload = remote_file(quote(name,safe="/"), commit)
-        if hashlib.sha256(payload).hexdigest() != digest:
-            raise ValueError('Bundle hash mismatch: ' + name)
-        if name.endswith('.py'): compile(payload, name, 'exec')
-        payloads[name] = payload
-    if not payloads: return 'Already up to date (' + manifest['version'] + ')'
-    previous = {name: (root/name).read_bytes() if (root/name).exists() else None for name in payloads}
-    installed = []
+    from hub import api, remote_file
+    frozen=getattr(sys,'frozen',False)
+    app_root=Path(sys.executable).resolve().parent if frozen else Path(__file__).resolve().parent
+    module_root=Path(getattr(sys,'_MEIPASS',app_root)) if frozen else app_root
+    if root is not None: app_root=Path(root);module_root=app_root
+    commit=commit or api('git/ref/heads/main')['object']['sha']
+    manifest=json.loads(remote_file('desktop-bundle.json',commit))
+    required={'app_main.py','hub.py','qt_app.py','qt_style.py','supervisor.py','supply_manager.py','update.json','bundle.json'}
+    allowed=required|{'Launch Hub.vbs','Launch Hub.cmd','requirements.txt','desktop-bundle.json','taco.ico'}
+    bot_files={
+      'bot/Encounter ReBuilt/Encounter_ReBuilt.au3','bot/Encounter ReBuilt/Encounter_ReBuilt.exe',
+      'bot/Encounter ReBuilt/Files/AddOns.au3','bot/Encounter ReBuilt/Files/GUI.au3',
+      'bot/Encounter ReBuilt/Files/ItemFilter.au3','bot/Encounter ReBuilt/Files/Launch.au3',
+      'bot/Encounter ReBuilt/Files/Pathing.au3','bot/Encounter ReBuilt/Files/Security.au3',
+      'bot/Encounter ReBuilt/Files/SupplyManager.au3','bot/Encounter ReBuilt/Files/_Includes.au3',
+      'bot/Encounter ReBuilt/Images/BannerGeneral.jpg','bot/Encounter ReBuilt/Images/BannerLootConfig.jpg',
+      'bot/Encounter ReBuilt/Images/BannerTradeConfig.jpg','bot/Encounter ReBuilt/Images/Encounter.ico'}
+    if manifest.get('format')!=1 or not required.issubset(manifest.get('files',{})) or not set(manifest.get('files',{})).issubset(allowed|bot_files):
+        raise ValueError('Unsupported desktop update manifest')
+    bot_root=app_root/'Encounter ReBuilt'
+    payloads={};destinations={}
+    for name,digest in manifest['files'].items():
+        if not isinstance(digest,str) or not re.fullmatch('[0-9a-f]{64}',digest):raise ValueError('Invalid bundle hash: '+name)
+        if name.startswith('bot/'):
+            relative=Path(name[4:])
+            if relative.is_absolute() or '..' in relative.parts:raise ValueError('Unsafe bot update path')
+            source='Encounter ReBuilt - PUBLIC/'+name[len('bot/Encounter ReBuilt/'):]
+            target=bot_root/relative
+        else:source=name;target=module_root/name
+        destinations[name]=target
+        if target.is_file() and hashlib.sha256(target.read_bytes()).hexdigest()==digest:continue
+        payload=remote_file(quote(source,safe='/'),commit)
+        if hashlib.sha256(payload).hexdigest()!=digest:raise ValueError('Bundle hash mismatch: '+name)
+        if name.endswith('.py'):compile(payload,name,'exec')
+        payloads[name]=payload
+
+    bot_root.mkdir(parents=True,exist_ok=True)
+    # Preserve user-specific characters.ini, grid.ini, and settings.ini.
+    for folder_name in ('Config','Images'):
+        old=app_root/folder_name;new=bot_root/folder_name
+        if old.is_dir():
+            new.mkdir(parents=True,exist_ok=True)
+            for item in old.iterdir():
+                if not (new/item.name).exists():shutil.move(str(item),str(new/item.name))
+            try:old.rmdir()
+            except OSError:pass
+
+    previous={name:(target.read_bytes() if target.is_file() else None) for name,target in destinations.items() if name in payloads}
+    installed=[]
     try:
-        for name, payload in payloads.items():
-            target = root/name
-            if previous[name] is not None: (root/(name+'.backup')).write_bytes(previous[name])
-            temporary=root/(name+'.download'); temporary.write_bytes(payload)
-            os.replace(temporary,target); installed.append(name)
+        for name,payload in payloads.items():
+            target=destinations[name];target.parent.mkdir(parents=True,exist_ok=True)
+            if previous[name] is not None and not name.startswith('bot/'):(target.with_name(target.name+'.backup')).write_bytes(previous[name])
+            temporary=target.with_name(target.name+'.download');temporary.write_bytes(payload);os.replace(temporary,target);installed.append(name)
     except Exception:
         for name in reversed(installed):
-            if previous[name] is None: (root/name).unlink(missing_ok=True)
+            target=destinations[name]
+            if previous[name] is None:target.unlink(missing_ok=True)
             else:
-                temporary=root/(name+'.rollback');temporary.write_bytes(previous[name]);os.replace(temporary,root/name)
+                temporary=target.with_name(target.name+'.rollback');temporary.write_bytes(previous[name]);os.replace(temporary,target)
         raise
-    return 'Updated complete launcher to ' + manifest['version']
+
+    if module_root!=app_root:
+        legacy=('app_main.py','hub.py','qt_app.py','qt_style.py','supervisor.py','supply_manager.py','requirements.txt','update.json','bundle.json','desktop-bundle.json','taco.ico','Launch Hub.vbs','Launch Hub.cmd')
+        for name in legacy:
+            old=app_root/name
+            if old.is_file():
+                new=module_root/name
+                if not new.exists():shutil.move(str(old),str(new))
+                else:old.unlink()
+        old_exe=app_root/'Encounter_ReBuilt.exe'
+        if old_exe.is_file() and old_exe.resolve()!=(bot_root/'Encounter_ReBuilt.exe').resolve():
+            if not (bot_root/'Encounter_ReBuilt.exe').exists():shutil.move(str(old_exe),str(bot_root/'Encounter_ReBuilt.exe'))
+            else:old_exe.unlink()
+        stale=bot_root/'EncounterHub-main'
+        if stale.is_dir():shutil.rmtree(stale)
+
+    def find_aut2exe():
+        candidates=[]
+        try:
+            import winreg
+            for hive,key in ((winreg.HKEY_LOCAL_MACHINE,r'SOFTWARE\AutoIt v3'),(winreg.HKEY_LOCAL_MACHINE,r'SOFTWARE\WOW6432Node\AutoIt v3'),(winreg.HKEY_CURRENT_USER,r'SOFTWARE\AutoIt v3')):
+                try:
+                    with winreg.OpenKey(hive,key) as handle:
+                        install,_=winreg.QueryValueEx(handle,'InstallDir')
+                        candidates.append(Path(install)/'Aut2Exe'/'Aut2Exe.exe')
+                except OSError:pass
+        except ImportError:pass
+        candidates.extend((Path(os.environ.get('ProgramFiles(x86)',r'C:\Program Files (x86)'))/'AutoIt3'/'Aut2Exe'/'Aut2Exe.exe',
+                           Path(os.environ.get('ProgramFiles',r'C:\Program Files'))/'AutoIt3'/'Aut2Exe'/'Aut2Exe.exe'))
+        for candidate in candidates:
+            if candidate.is_file():return candidate
+        found=shutil.which('Aut2Exe.exe') or shutil.which('Aut2Exe')
+        return Path(found) if found else None
+
+    bot_exe=bot_root/'Encounter_ReBuilt.exe';compiler=find_aut2exe();compile_note=''
+    if compiler:
+        temporary=bot_root/'Encounter_ReBuilt.updated.exe'
+        result=subprocess.run([str(compiler),'/in',str(bot_root/'Encounter_ReBuilt.au3'),'/out',str(temporary)],cwd=str(bot_root),capture_output=True,text=True,timeout=180)
+        if result.returncode==0 and temporary.is_file() and temporary.stat().st_size>100000:
+            os.replace(temporary,bot_exe);compile_note='AutoIt bot recompiled successfully.'
+        else:
+            temporary.unlink(missing_ok=True)
+            compile_note='AutoIt compiler was found but compilation failed; the included updated executable was retained. '+(result.stderr or result.stdout or '').strip()[-500:]
+    else:compile_note='AutoIt compiler was not found; the included updated executable is ready, but local recompilation was skipped.'
+
+    settings_path=Path(os.environ.get('LOCALAPPDATA',str(Path.home())))/'EncounterHub'/'settings.json'
+    if settings_path.is_file():
+        try:
+            settings=json.loads(settings_path.read_text('utf-8'))
+            old_bot=Path(settings.get('bot_path','')).resolve() if settings.get('bot_path') else None
+            if not old_bot or old_bot==(app_root/'Encounter_ReBuilt.exe').resolve() or old_bot==bot_exe.resolve() or not old_bot.exists():
+                settings['bot_path']=str(bot_exe)
+                temporary=settings_path.with_suffix('.json.download');temporary.write_text(json.dumps(settings,indent=2),encoding='utf-8');os.replace(temporary,settings_path)
+        except (OSError,ValueError):pass
+    return 'Updated to '+manifest['version']+'. Files organized; '+compile_note
 
 
 def advance_stop(session):
@@ -618,8 +698,8 @@ class Hub:
         if target and target in buttons:
             if self.native.click(buttons[target]):
                 s['sent_at']=time.monotonic();self.report(name,'command',target+' sent')
-                if target!='Pause':s['pending']=None
-            elif target!='Pause':self.report(name,'command',target+' unavailable in bot');s['pending']=None
+                if target not in ('Pause','Force pause now'):s['pending']=None
+            elif target not in ('Pause','Force pause now'):self.report(name,'command',target+' unavailable in bot');s['pending']=None
 
     def tick(self):
         if self.closing:return
