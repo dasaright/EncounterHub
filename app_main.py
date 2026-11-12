@@ -24,8 +24,12 @@ def command_action(command, buttons):
     active = {'Trade Mode': 'Stop Trade Mode', 'Open Lockboxes': 'Stop Opening'}
     if command in active and active[command] in buttons:
         return None, 'Already in ' + command, True
+    if command == 'Force Pause':
+        if 'Force pause now' in buttons:
+            return 'Force pause now', 'Force pause requested', False
+        return None, 'Force pause not available yet', False
     if command == 'Pause' and 'Force pause now' in buttons:
-        return 'Force pause now', 'Force pause requested', False
+        return None, 'Waiting for current run to finish', False
     if 'Pause' in buttons:
         return 'Pause', 'Pausing after current run', False
     if 'Waiting for pause...' in buttons:
