@@ -2252,7 +2252,7 @@ class Desktop(QMainWindow):
                 for name,digest in manifest['files'].items():
                     if not isinstance(digest,str) or len(digest)!=64 or any(c not in '0123456789abcdef' for c in digest):
                         raise ValueError('Invalid SHA-256 in update manifest: '+name)
-                    local=ROOT/name
+                    local=(ROOT.parent/Path(name[4:])) if name.startswith('bot/') else (ROOT/name)
                     if not local.is_file() or hashlib.sha256(local.read_bytes()).hexdigest()!=digest:mismatches.append(name)
                 available=bool(mismatches)
                 detail=('Files to update: '+', '.join(mismatches)) if available else 'All installed files match the latest desktop bundle.'
