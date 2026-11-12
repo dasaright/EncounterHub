@@ -55,7 +55,7 @@ def update_bundle(root=None, commit=None):
     if root is not None: app_root=Path(root);module_root=app_root
     commit=commit or api('git/ref/heads/main')['object']['sha']
     manifest=json.loads(remote_file('desktop-bundle.json',commit))
-    required={'app_main.py','hub.py','qt_app.py','qt_style.py','supervisor.py','supply_manager.py','update.json','bundle.json'}
+    required={'app_main.py','hub.py','qt_app.py','qt_style.py','supervisor.py','supply_manager.py','update.json','bundle.json','bot/Encounter ReBuilt/Encounter_ReBuilt.au3','bot/Encounter ReBuilt/Encounter_ReBuilt.exe'}
     allowed=required|{'Launch Hub.vbs','Launch Hub.cmd','requirements.txt','desktop-bundle.json','taco.ico'}
     bot_files={
       'bot/Encounter ReBuilt/Encounter_ReBuilt.au3','bot/Encounter ReBuilt/Encounter_ReBuilt.exe',
@@ -75,7 +75,7 @@ def update_bundle(root=None, commit=None):
             relative=Path(name[4:])
             if relative.is_absolute() or '..' in relative.parts:raise ValueError('Unsafe bot update path')
             source='Encounter ReBuilt - PUBLIC/'+name[len('bot/Encounter ReBuilt/'):]
-            target=bot_root/relative
+            target=(bot_root/'Encounter_ReBuilt.downloaded.exe') if name.endswith('/Encounter_ReBuilt.exe') else bot_root/relative
         else:source=name;target=module_root/name
         destinations[name]=target
         if target.is_file() and hashlib.sha256(target.read_bytes()).hexdigest()==digest:continue
@@ -143,12 +143,15 @@ def update_bundle(root=None, commit=None):
         found=shutil.which('Aut2Exe.exe') or shutil.which('Aut2Exe')
         return Path(found) if found else None
 
-    bot_exe=bot_root/'Encounter_ReBuilt.exe';compiler=find_aut2exe();compile_note=''
+    bot_exe=bot_root/'Encounter_ReBuilt.exe';downloaded_exe=bot_root/'Encounter_ReBuilt.downloaded.exe';compiler=find_aut2exe();compile_note=''
     if compiler:
         temporary=bot_root/'Encounter_ReBuilt.updated.exe'
         result=subprocess.run([str(compiler),'/in',str(bot_root/'Encounter_ReBuilt.au3'),'/out',str(temporary)],cwd=str(bot_root),capture_output=True,text=True,timeout=180)
         if result.returncode==0 and temporary.is_file() and temporary.stat().st_size>100000:
-            os.replace(temporary,bot_exe);compile_note='AutoIt bot recompiled successfully.'
+            try:
+                os.replace(temporary,bot_exe);downloaded_exe.unlink(missing_ok=True);compile_note='AutoIt bot recompiled successfully.'
+            except PermissionError:
+                bot_exe=bot_root/'Encounter_ReBuilt.updated.exe';os.replace(temporary,bot_exe);compile_note='AutoIt bot recompiled successfully and was staged because the previous bot instance still has its executable open.'
         else:
             temporary.unlink(missing_ok=True)
             compile_note='AutoIt compiler was found but compilation failed; the included updated executable was retained. '+(result.stderr or result.stdout or '').strip()[-500:]
@@ -159,7 +162,7 @@ def update_bundle(root=None, commit=None):
         try:
             settings=json.loads(settings_path.read_text('utf-8'))
             old_bot=Path(settings.get('bot_path','')).resolve() if settings.get('bot_path') else None
-            if not old_bot or old_bot==(app_root/'Encounter_ReBuilt.exe').resolve() or old_bot==bot_exe.resolve() or not old_bot.exists():
+            if not old_bot or old_bot==(app_root/'Encounter_ReBuilt.exe').resolve() or old_bot==bot_exe.resolve() or (old_bot and old_bot.parent==bot_root.resolve()) or not old_bot.exists():
                 settings['bot_path']=str(bot_exe)
                 temporary=settings_path.with_suffix('.json.download');temporary.write_text(json.dumps(settings,indent=2),encoding='utf-8');os.replace(temporary,settings_path)
         except (OSError,ValueError):pass
