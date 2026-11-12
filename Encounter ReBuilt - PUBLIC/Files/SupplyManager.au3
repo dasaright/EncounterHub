@@ -38,6 +38,46 @@ EndFunc
 Func Supply_Count($model)
     Return AddOns_GetInventoryItemCountbyModelID($model,True)
 EndFunc
+; Keep character platinum usable for the next transaction, moving it to/from storage.
+; Guild Wars limits carried gold to 100,000g and storage to 1,000,000g.
+Func Supply_BalanceGold($required=0)
+    Local Const $LC_I_CHARACTER_GOLD_CAP=100000
+    Local Const $LC_I_STORAGE_GOLD_CAP=1000000
+    Local Const $LC_I_DEPOSIT_THRESHOLD=75000
+    If $required<0 Or $required>$LC_I_CHARACTER_GOLD_CAP Then
+        AddOns_Out("[SUPPLY] Gold balance request is outside the 0-100,000g inventory limit")
+        Return False
+    EndIf
+    Local $gold=Item_GetInventoryInfo("GoldCharacter")
+    Local $bank=Item_GetInventoryInfo("GoldStorage")
+    If $gold<$required Then
+        Local $withdraw=$required-$gold
+        If $withdraw>$bank Then $withdraw=$bank
+        If $withdraw>$LC_I_CHARACTER_GOLD_CAP-$gold Then $withdraw=$LC_I_CHARACTER_GOLD_CAP-$gold
+        If $withdraw<=0 Then
+            AddOns_Out("[SUPPLY] Not enough platinum: need "&$required&"g, have "&$gold&"g in inventory and "&$bank&"g in storage")
+            Return False
+        EndIf
+        Item_WithdrawGold($withdraw)
+        Sleep(500)
+        $gold=Item_GetInventoryInfo("GoldCharacter")
+        $bank=Item_GetInventoryInfo("GoldStorage")
+        If $gold<$required Then
+            AddOns_Out("[SUPPLY] Could not withdraw enough platinum; inventory has "&$gold&"g, required "&$required&"g")
+            Return False
+        EndIf
+    ElseIf $required=0 And $gold>=$LC_I_DEPOSIT_THRESHOLD And $bank<$LC_I_STORAGE_GOLD_CAP Then
+        Item_DepositGold()
+        Sleep(500)
+        $gold=Item_GetInventoryInfo("GoldCharacter")
+        $bank=Item_GetInventoryInfo("GoldStorage")
+        If $gold>=$LC_I_DEPOSIT_THRESHOLD And $bank>=$LC_I_STORAGE_GOLD_CAP Then
+            AddOns_Out("[SUPPLY] Storage is full; cannot clear carried platinum for further sales")
+            Return False
+        EndIf
+    EndIf
+    Return Item_GetInventoryInfo("GoldCharacter")>=$required
+EndFunc
 Func Supply_BuyMats($item)
     Local $models[5]=[$GC_I_MODELID_BONES,$GC_I_MODELID_PLANT_FIBRES,$GC_I_MODELID_DUST,$GC_I_MODELID_FEATHERS,$GC_I_MODELID_IRON]
     Local $need[5]
@@ -60,11 +100,21 @@ Func Supply_BuyMats($item)
         If $missing<=0 Then ContinueLoop
         If Not Supply_Talk("Shad") Then Return False
         AddOns_Out("[SUPPLY] Buying "&$missing&" of material model "&$models[$i])
-        If Not Merchant_BuyItem($models[$i],Ceiling($missing/10),True) Then
-            AddOns_Out("[SUPPLY] Material purchase failed for model "&$models[$i]&"; check gold, merchant stock, and inventory space")
-            Return False
-        EndIf
-        Sleep(500)
+        Local $batches=Ceiling($missing/10)
+        For $batch=1 To $batches
+            Local $price=Supply_QuoteBuy($models[$i])
+            If $price<=0 Then
+                AddOns_Out("[SUPPLY] Could not get a purchase quote for material model "&$models[$i])
+                Return False
+            EndIf
+            If Not Supply_BalanceGold($price) Then Return False
+            If Not Merchant_BuyItem($models[$i],1,True) Then
+                AddOns_Out("[SUPPLY] Material purchase failed for model "&$models[$i]&"; checked carried platinum, merchant stock, and inventory space")
+                Return False
+            EndIf
+            Sleep(500)
+            If Not Supply_BalanceGold() Then Return False
+        Next
         Local $remaining=$need[$i]-Supply_Count($models[$i])
         If $remaining>0 Then
             AddOns_Out("[SUPPLY] Material purchase incomplete for model "&$models[$i]&"; still missing "&$remaining)
@@ -117,12 +167,17 @@ Func Supply_Craft($item)
         AddOns_Out("[SUPPLY] Crafter unavailable for "&$item&": "&$npc)
         Return False
     EndIf
+    If Not Supply_BalanceGold(250) Then
+        AddOns_Out("[SUPPLY] Cannot craft "&$item&": 250g crafting fee is unavailable in carried platinum")
+        Return False
+    EndIf
     Local $before=Supply_Stock($item)
     If Not Merchant_CraftItem($model,250,$recipe,1) Then
-        AddOns_Out("[SUPPLY] Craft request failed for "&$item&"; check character gold and recipe materials")
+        AddOns_Out("[SUPPLY] Craft request failed for "&$item&"; check carried platinum and recipe materials")
         Return False
     EndIf
     Sleep(1000)
+    If Not Supply_BalanceGold() Then Return False
     Local $after=Supply_Stock($item)
     If $after<=$before Then
         AddOns_Out("[SUPPLY] Craft did not produce "&$item&"; inventory count did not increase")
@@ -166,8 +221,18 @@ Func Supply_SellEctos($minimum)
                 AddOns_Out("[SUPPLY] Ecto sale stopped at quote "&$price&"g (minimum "&$minimum&"g)")
                 Return True
             EndIf
-            Merchant_SellItem($id,1,True)
-            Sleep(300)
+            If Not Supply_BalanceGold() Then Return False
+            Local $beforeEctos=Supply_Count($GC_I_MODELID_GLOB_OF_ECTOPLASM)
+            If Not Merchant_SellItem($id,1,True) Then
+                AddOns_Out("[SUPPLY] Ecto sale request failed; carried platinum was balanced before selling")
+                Return False
+            EndIf
+            Sleep(350)
+            If Supply_Count($GC_I_MODELID_GLOB_OF_ECTOPLASM)>=$beforeEctos Then
+                AddOns_Out("[SUPPLY] Ecto sale was not confirmed; stopping to avoid a false success")
+                Return False
+            EndIf
+            If Not Supply_BalanceGold() Then Return False
         Next
     Next
     Return True
@@ -207,8 +272,8 @@ Func Supply_Produce($profile)
     Local $passes=0
     Local $gold=Item_GetInventoryInfo("GoldCharacter")
     Local $slots=AddOns_GetEmptyInventorySlotCount()
-    If $gold<250 Then
-        AddOns_Out("[SUPPLY] Production skipped: character gold is "&$gold&"g; at least 250g is required")
+    If Not Supply_BalanceGold(250) Then
+        AddOns_Out("[SUPPLY] Production skipped: unable to prepare the 250g crafting fee from carried or bank platinum")
         Return False
     EndIf
     If $slots<=1 Then
