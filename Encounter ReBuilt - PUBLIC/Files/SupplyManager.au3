@@ -95,29 +95,44 @@ Func Supply_BuyMats($item)
             $need[0]=50
             $need[4]=50
     EndSwitch
+
+    ; Common materials at a Guild Wars material trader are sold only in lots of 10.
+    ; Round the requested amount up to whole lots (e.g. 25 -> 30).
+    Local Const $LC_I_TRADER_LOT=10
     For $i=0 To 4
-        Local $missing=$need[$i]-Supply_Count($models[$i])
+        Local $current=Supply_Count($models[$i])
+        Local $missing=$need[$i]-$current
         If $missing<=0 Then ContinueLoop
         If Not Supply_Talk("Shad") Then Return False
-        AddOns_Out("[SUPPLY] Buying "&$missing&" of material model "&$models[$i])
-        Local $batches=Ceiling($missing/10)
-        For $batch=1 To $batches
-            ; Do not request a separate quote here. Shad's live merchant entry can be
-            ; present even when the quote response ID is stale or unavailable. The
-            ; merchant purchase routine performs its own quote/transaction handling.
-            ; Keep a 10,000g working balance so purchases do not depend on the quote
-            ; packet, and replenish it from storage when necessary.
+
+        Local $lots=Ceiling($missing/$LC_I_TRADER_LOT)
+        AddOns_Out("[SUPPLY] Buying "&($lots*$LC_I_TRADER_LOT)&" of material model "&$models[$i]&" in "&$lots&" trader lot(s) of 10")
+        For $batch=1 To $lots
+            ; Trader purchases require a full 10-unit lot. The third argument enables
+            ; trader quoting/purchase handling; quantity 1 is not a valid material trade.
             If Not Supply_BalanceGold(10000) Then
                 AddOns_Out("[SUPPLY] Cannot prepare carried platinum for material model "&$models[$i])
                 Return False
             EndIf
-            If Not Merchant_BuyItem($models[$i],1,True) Then
-                AddOns_Out("[SUPPLY] Merchant_BuyItem rejected material model "&$models[$i]&"; carried gold "&Item_GetInventoryInfo("GoldCharacter")&"g, bank gold "&Item_GetInventoryInfo("GoldStorage")&"g, free slots "&AddOns_GetEmptyInventorySlotCount())
+
+            Local $before=Supply_Count($models[$i])
+            If Not Merchant_BuyItem($models[$i],$LC_I_TRADER_LOT,True) Then
+                AddOns_Out("[SUPPLY] Material trader rejected 10-unit lot for model "&$models[$i]&"; carried gold "&Item_GetInventoryInfo("GoldCharacter")&"g, bank gold "&Item_GetInventoryInfo("GoldStorage")&"g, free slots "&AddOns_GetEmptyInventorySlotCount()&". Check trader stock and quote.")
                 Return False
             EndIf
-            Sleep(500)
+
+            Local $wait=TimerInit()
+            Do
+                Sleep(100)
+            Until Supply_Count($models[$i])>=$before+$LC_I_TRADER_LOT Or TimerDiff($wait)>5000
+            Local $after=Supply_Count($models[$i])
+            If $after<$before+$LC_I_TRADER_LOT Then
+                AddOns_Out("[SUPPLY] Trader purchase was not confirmed for model "&$models[$i]&"; expected +"&$LC_I_TRADER_LOT&", observed +"&($after-$before))
+                Return False
+            EndIf
             If Not Supply_BalanceGold() Then Return False
         Next
+
         Local $remaining=$need[$i]-Supply_Count($models[$i])
         If $remaining>0 Then
             AddOns_Out("[SUPPLY] Material purchase incomplete for model "&$models[$i]&"; still missing "&$remaining)
