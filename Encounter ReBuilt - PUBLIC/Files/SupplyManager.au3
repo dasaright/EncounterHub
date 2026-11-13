@@ -124,9 +124,8 @@ Func Supply_BuyMats($item)
             EndIf
 
             Local $before=Supply_Count($models[$i])
-            ; The quantity argument is the number of trader transactions, not
-            ; the material count. One common-material transaction yields 10 units.
-            If Not Merchant_BuyItem($models[$i],1,True) Then
+            ; Common materials are purchased in 10-unit quantities at the trader.
+            If Not Merchant_BuyItem($models[$i],$LC_I_TRADER_LOT,True) Then
                 AddOns_Out("[SUPPLY] Trader purchase rejected for model "&$models[$i]&" (10-unit lot); quote "&$quote&"g, carried gold "&Item_GetInventoryInfo("GoldCharacter")&"g, bank gold "&Item_GetInventoryInfo("GoldStorage")&"g, free slots "&AddOns_GetEmptyInventorySlotCount()&", quote item ID "&Memory_Read($g_i_TraderCostID,"dword")&".")
                 Return False
             EndIf
