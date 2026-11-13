@@ -102,14 +102,17 @@ Func Supply_BuyMats($item)
         AddOns_Out("[SUPPLY] Buying "&$missing&" of material model "&$models[$i])
         Local $batches=Ceiling($missing/10)
         For $batch=1 To $batches
-            Local $price=Supply_QuoteBuy($models[$i])
-            If $price<=0 Then
-                AddOns_Out("[SUPPLY] Could not get a purchase quote for material model "&$models[$i])
+            ; Do not request a separate quote here. Shad's live merchant entry can be
+            ; present even when the quote response ID is stale or unavailable. The
+            ; merchant purchase routine performs its own quote/transaction handling.
+            ; Keep a 10,000g working balance so purchases do not depend on the quote
+            ; packet, and replenish it from storage when necessary.
+            If Not Supply_BalanceGold(10000) Then
+                AddOns_Out("[SUPPLY] Cannot prepare carried platinum for material model "&$models[$i])
                 Return False
             EndIf
-            If Not Supply_BalanceGold($price) Then Return False
             If Not Merchant_BuyItem($models[$i],1,True) Then
-                AddOns_Out("[SUPPLY] Material purchase failed for model "&$models[$i]&"; checked carried platinum, merchant stock, and inventory space")
+                AddOns_Out("[SUPPLY] Merchant_BuyItem rejected material model "&$models[$i]&"; carried gold "&Item_GetInventoryInfo("GoldCharacter")&"g, bank gold "&Item_GetInventoryInfo("GoldStorage")&"g, free slots "&AddOns_GetEmptyInventorySlotCount())
                 Return False
             EndIf
             Sleep(500)
