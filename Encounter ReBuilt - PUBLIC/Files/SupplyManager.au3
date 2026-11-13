@@ -17,6 +17,9 @@ EndFunc
 Func Supply_RunningPath()
     Return @ScriptDir & "\Config\supply.manual." & Supply_CharacterFileKey() & ".running"
 EndFunc
+Func Supply_ManualRequestPending()
+    Return FileExists(Supply_RequestPath())
+EndFunc
 Func Supply_NPC($name)
     Local $agents = Agent_GetAgentArray()
     For $i = 1 To $agents[0]
@@ -108,19 +111,26 @@ Func Supply_BuyMats($item)
         Local $lots=Ceiling($missing/$LC_I_TRADER_LOT)
         AddOns_Out("[SUPPLY] Buying "&($lots*$LC_I_TRADER_LOT)&" of material model "&$models[$i]&" in "&$lots&" trader lot(s) of 10")
         For $batch=1 To $lots
-            ; Trader purchases require a full 10-unit lot. The third argument enables
-            ; trader quoting/purchase handling; quantity 1 is not a valid material trade.
-            If Not Supply_BalanceGold(10000) Then
-                AddOns_Out("[SUPPLY] Cannot prepare carried platinum for material model "&$models[$i])
+            ; One trader transaction buys one 10-material lot. Quote it first so
+            ; the character carries the actual live price instead of an arbitrary reserve.
+            Local $quote=Supply_QuoteBuy($models[$i])
+            If $quote<=0 Then
+                AddOns_Out("[SUPPLY] No valid live trader quote for model "&$models[$i]&"; quote item ID "&Memory_Read($g_i_TraderCostID,"dword")&", carried gold "&Item_GetInventoryInfo("GoldCharacter")&"g")
+                Return False
+            EndIf
+            If Not Supply_BalanceGold($quote) Then
+                AddOns_Out("[SUPPLY] Cannot afford quoted 10-unit lot for model "&$models[$i]&": quote "&$quote&"g, carried gold "&Item_GetInventoryInfo("GoldCharacter")&"g, bank gold "&Item_GetInventoryInfo("GoldStorage")&"g")
                 Return False
             EndIf
 
             Local $before=Supply_Count($models[$i])
-            If Not Merchant_BuyItem($models[$i],$LC_I_TRADER_LOT,True) Then
-                AddOns_Out("[SUPPLY] Material trader rejected 10-unit lot for model "&$models[$i]&"; carried gold "&Item_GetInventoryInfo("GoldCharacter")&"g, bank gold "&Item_GetInventoryInfo("GoldStorage")&"g, free slots "&AddOns_GetEmptyInventorySlotCount()&". Check trader stock and quote.")
+            ; The quantity argument is the number of trader transactions, not
+            ; the material count. One common-material transaction yields 10 units.
+            If Not Merchant_BuyItem($models[$i],1,True) Then
+                AddOns_Out("[SUPPLY] Trader purchase rejected for model "&$models[$i]&" (10-unit lot); quote "&$quote&"g, carried gold "&Item_GetInventoryInfo("GoldCharacter")&"g, bank gold "&Item_GetInventoryInfo("GoldStorage")&"g, free slots "&AddOns_GetEmptyInventorySlotCount()&", quote item ID "&Memory_Read($g_i_TraderCostID,"dword")&".")
                 Return False
             EndIf
-
+            AddOns_Out("[SUPPLY] Submitted trader purchase for model "&$models[$i]&" at "&$quote&"g per 10-unit lot")
             Local $wait=TimerInit()
             Do
                 Sleep(100)
@@ -266,6 +276,7 @@ Func Supply_QuoteBuy($model)
         Sleep(50)
     Until Memory_Read($g_i_TraderQuoteID)<>$old Or TimerDiff($timer)>5000
     If TimerDiff($timer)>5000 Then Return 0
+    If Memory_Read($g_i_TraderCostID,"dword")<>$id Then Return 0
     Return Memory_Read($g_f_TraderCostValue,"dword")
 EndFunc
 Func Supply_ManualConsetOK()
