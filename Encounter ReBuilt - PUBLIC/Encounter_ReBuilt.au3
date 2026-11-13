@@ -2604,6 +2604,10 @@ Func OpenLockboxes()
     EndIf
 
     While True
+        If Supply_ManualRequestPending() Then
+            OpenLockboxCleanup()
+            Return True
+        EndIf
         Local $l_i_InvItemCount = AddOns_GetInventoryItemCountbyModelID($GC_I_MODELID_IMPERIAL_GUARD_LOCKBOX)
         If $l_i_InvItemCount <= 0 Then
             Local $l_i_StgItemCount = AddOns_GetStorageItemCountbyModelID($GC_I_MODELID_IMPERIAL_GUARD_LOCKBOX)
@@ -2633,6 +2637,10 @@ Func OpenLockboxes()
             Local $l_i_Qty = $l_av2_InvArray[$i][$GC_I_INVENTORY_QUANTITY]
 
             For $j = 1 To $l_i_Qty
+                If Supply_ManualRequestPending() Then
+                    OpenLockboxCleanup()
+                    Return True
+                EndIf
                 If Not GUI_BotIsOpening() Or $g_b_ResumeRequested Then
                     OpenLockboxCleanup()
                     Return True
@@ -2928,6 +2936,7 @@ Func AutoTrade()
 
     Do
 		If Not IsAlive("AutoTrade") Then Return SetError(1, 0, False)
+        If Supply_ManualRequestPending() Then Return TradeCleanup($l_m_TradeSet)
         If Not GUI_BotIsTrading() Or $g_b_ResumeRequested Then Return TradeCleanup($l_m_TradeSet)
         Sleep(250)
     Until Trade_GetTradeInfo("IsTradeInitiated")
@@ -2940,6 +2949,10 @@ Func AutoTrade()
 
     While $l_i_ItemsOffered < 7
 		If Not IsAlive("AutoTrade") Then Return SetError(1, 0, False)
+        If Supply_ManualRequestPending() Then
+            Trade_CancelTrade()
+            Return TradeCleanup($l_m_TradeSet)
+        EndIf
         If Not GUI_BotIsTrading() Or $g_b_ResumeRequested Then
             Trade_CancelTrade()
             Return TradeCleanup($l_m_TradeSet)
@@ -3701,6 +3714,13 @@ Func Main()
     While True
         If Not $g_b_Heartbeat Then
             RestartGW()
+            ContinueLoop
+        EndIf
+
+        ; A manual Buy Cons request has absolute priority over auto-trade leave and other routines.
+        If Supply_CheckManualRequest() Then
+            $g_b_ForcePauseRequested=False
+            $g_b_PauseRequested=False
             ContinueLoop
         EndIf
 
