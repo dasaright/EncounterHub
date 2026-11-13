@@ -136,14 +136,13 @@ class QtDesktop(unittest.TestCase):
         self.assertEqual(ini['Character:Character One']['AutomaticProfile'],'Grail of Might')
         self.assertEqual(ini['Character:Character One']['ManualProfile'],'Armor of Salvation')
 
-    def test_buy_cons_requires_paused_account_and_queues_character_specific_request(self):
+    def test_buy_cons_is_available_during_active_session_and_queues_character_request(self):
         w=self.window;name='Character One'
-        w.request_supply_purchase(name)
-        request=w.exe.parent/'Config'/('supply.manual.'+w.supply_file_key(name)+'.request')
-        self.assertFalse(request.exists())
-        w.paused_accounts.add(name);w.update_buycons_button(name)
+        w.sessions[name]=w.session(FakeOwnedProcess(None),'run')
+        w.update_buycons_button(name)
         self.assertTrue(w.row_widgets[name]['buycons'].isEnabled())
         w.request_supply_purchase(name)
+        request=w.exe.parent/'Config'/('supply.manual.'+w.supply_file_key(name)+'.request')
         self.assertTrue(request.exists())
         self.assertIn(name,w.buy_cons_pending)
         self.assertFalse(w.row_widgets[name]['buycons'].isEnabled())
