@@ -54,7 +54,7 @@ jobs:
         shell: pwsh
         run: |
           $source = Get-Content app_main.py -Raw
-          if ($source -notmatch "VERSION\s*=\s*'([^']+)'") { throw "Could not read VERSION from app_main.py" }
+          if ($source -notmatch 'VERSION\s*=\s*["'']([^"'']+)["'']') { throw "Could not read VERSION from app_main.py" }
           $version = $Matches[1]
           "value=$version" >> $env:GITHUB_OUTPUT
           git fetch --tags
