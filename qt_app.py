@@ -2179,6 +2179,7 @@ class Desktop(QMainWindow):
             name=record['character'];self.add_row(name)
             self.sessions[name]=self.session(RemoteProcess(self.broker,record['identifier'],record['pid']),'wait')
             self.sessions[name]['deadline']=time.monotonic()+300
+            self.update_buycons_button(name)
             self.tree.set(name,'status','Reconnected to active owned session');self.tree.set(name,'pid',record['pid'])
 
     def launch(self,names=None):
@@ -2191,6 +2192,7 @@ class Desktop(QMainWindow):
             try:
                 record=self.broker.call('launch',exe=str(self.exe.resolve()),character=name)
                 self.sessions[name]=self.session(RemoteProcess(self.broker,record['identifier'],record['pid']))
+                self.update_buycons_button(name)
                 self.tree.set(name,'status','Opening bot...');self.tree.set(name,'storage','—');self.tree.set(name,'command','');self.tree.set(name,'pid',record['pid'])
             except OSError as exc:self.tree.set(name,'status',str(exc))
 
