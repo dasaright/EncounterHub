@@ -2043,24 +2043,31 @@ class Desktop(QMainWindow):
         return re.sub(r'[^A-Za-z0-9 _-]','_',name)
 
     def request_supply_purchase(self,name):
-        if name not in self.paused_accounts:
-            self.notice.setText('Pause '+name+' before using Buy Cons.')
+        session=self.sessions.get(name)
+        if not session or session['stopping'] or session['process'].poll() is not None:
+            self.notice.setText('Launch '+name+' before using Buy Cons.')
             return
         folder=self.supply_config_folder()
         key=self.supply_file_key(name)
         request=folder/('supply.manual.'+key+'.request')
+        running=folder/('supply.manual.'+key+'.running')
+        if request.exists() or running.exists():
+            self.notice.setText('A Buy Cons request is already pending for '+name+'.')
+            return
         temporary=request.with_suffix(request.suffix+'.tmp')
         temporary.write_text('manual',encoding='ascii')
         os.replace(temporary,request)
         self.buy_cons_pending.add(name)
         self.update_buycons_button(name)
-        self.notice.setText('Buy Cons queued for '+name+'. The bot will run it while paused.')
+        self.notice.setText('Buy Cons priority request sent for '+name+'. The bot will interrupt at its next safe checkpoint and travel to Embark.')
 
     def update_buycons_button(self,name):
         widgets=self.row_widgets.get(name,{})
         button=widgets.get('buycons')
         if button is None:return
-        enabled=name in self.paused_accounts and name not in self.buy_cons_pending
+        session=self.sessions.get(name)
+        active=bool(session and not session['stopping'] and session['process'].poll() is None)
+        enabled=active and name not in self.buy_cons_pending
         button.setEnabled(enabled)
         button.setText('Queued' if name in self.buy_cons_pending else 'Buy Cons')
 
