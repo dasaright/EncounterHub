@@ -2324,6 +2324,10 @@ EndFunc   ;==>CalculateFoeCount
 ; Related........: AddOns_GetIsDead, Party_GetPartyContextInfo
 ; ===============================================================================================================================
 Func CanContinue()
+    If Supply_ManualRequestPending() Then
+        $g_b_ForcePauseRequested=True
+        $g_b_PauseRequested=False
+    EndIf
     If $g_b_ForcePauseRequested Then Return False
     Local $l_b_IsDead = AddOns_GetIsDead($g_p_Player)
     If @error Then Return False
@@ -2356,6 +2360,11 @@ EndFunc   ;==>CanContinue
 ;                  HeartbeatStep, HeartbeatTravel, PickUpLoot, PrepareToFight, RunToStairs, Spike, WaitForFoes
 ; ===============================================================================================================================
 Func Quest18_ForcePauseReturn()
+    If Supply_ManualRequestPending() Then
+        If Not $g_b_ForcePauseRequested Then AddOns_Out("[SUPPLY] Priority Buy Cons request detected; interrupting the current run")
+        $g_b_ForcePauseRequested=True
+        $g_b_PauseRequested=False
+    EndIf
     If Not $g_b_ForcePauseRequested Then Return False
     ; Force pause is an immediate stop, not a request to travel or finish the run.
     ; The main loop will settle in IDLE after the current heartbeat/action returns.
@@ -3704,6 +3713,12 @@ Func Main()
         Switch GUI_GetBotState()
 			Case $GC_I_BOTSTATE_RUN
 				Quest18()
+                ; Manual supply requests outrank normal pause handling and automatic supply checks.
+                If Supply_CheckManualRequest() Then
+                    $g_b_ForcePauseRequested=False
+                    $g_b_PauseRequested=False
+                    ContinueLoop
+                EndIf
 				If $g_b_ForcePauseRequested Then
 					$g_b_ForcePauseRequested = False
 					$g_b_PauseRequested = False
@@ -3721,6 +3736,7 @@ Func Main()
 
             Case $GC_I_BOTSTATE_OPEN
                 OpenLockboxes()
+                If Supply_CheckManualRequest() Then ContinueLoop
                 If $g_b_ResumeRequested Then
                     $g_b_ResumeRequested = False
                     GUI_SetBotState($GC_I_BOTSTATE_RUN)
@@ -3730,6 +3746,7 @@ Func Main()
 
             Case $GC_I_BOTSTATE_TRADE
                 AutoTrade()
+                If Supply_CheckManualRequest() Then ContinueLoop
                 If $g_b_ResumeRequested Then
                     $g_b_ResumeRequested = False
                     GUI_SetBotState($GC_I_BOTSTATE_RUN)
