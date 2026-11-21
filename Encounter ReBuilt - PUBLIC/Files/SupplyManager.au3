@@ -188,12 +188,27 @@ Func Supply_BuyMats($item)
             ; the character carries the actual live price instead of an arbitrary reserve.
             Local $quote=Supply_QuoteBuy($models[$i])
             If $quote<=0 Then
+                ; The trader window can close (e.g. after a gold transfer); reopen it once and retry.
+                If Not Supply_Talk("Shad") Then Return False
+                $quote=Supply_QuoteBuy($models[$i])
+            EndIf
+            If $quote<=0 Then
                 AddOns_Out("[SUPPLY] No valid live trader quote for model "&$models[$i]&"; quote item ID "&Memory_Read($g_i_TraderCostID,"dword")&", carried gold "&Item_GetInventoryInfo("GoldCharacter")&"g")
                 Return False
             EndIf
+            Local $goldBefore=Item_GetInventoryInfo("GoldCharacter")
             If Not Supply_BalanceGold($quote) Then
                 AddOns_Out("[SUPPLY] Cannot afford quoted 10-unit lot for model "&$models[$i]&": quote "&$quote&"g, carried gold "&Item_GetInventoryInfo("GoldCharacter")&"g, bank gold "&Item_GetInventoryInfo("GoldStorage")&"g")
                 Return False
+            EndIf
+            If Item_GetInventoryInfo("GoldCharacter")<>$goldBefore Then
+                ; A storage transfer happened; reopen the trader and refresh the quote before buying.
+                If Not Supply_Talk("Shad") Then Return False
+                $quote=Supply_QuoteBuy($models[$i])
+                If $quote<=0 Or $quote>Item_GetInventoryInfo("GoldCharacter") Then
+                    AddOns_Out("[SUPPLY] Trader quote unavailable after gold withdrawal for model "&$models[$i]&" (quote "&$quote&"g, carried "&Item_GetInventoryInfo("GoldCharacter")&"g)")
+                    Return False
+                EndIf
             EndIf
 
             Local $before=Supply_Count($models[$i])
@@ -212,7 +227,8 @@ Func Supply_BuyMats($item)
                 AddOns_Out("[SUPPLY] Trader purchase was not confirmed for model "&$models[$i]&"; expected +"&$LC_I_TRADER_LOT&", observed +"&($after-$before))
                 Return False
             EndIf
-            If Not Supply_BalanceGold() Then Return False
+            ; Do not deposit between lots: buying only lowers carried gold, and depositing
+            ; everything left 0g carried so the next quote failed.
         Next
 
         Local $remaining=$need[$i]-Supply_Count($models[$i])
@@ -277,7 +293,6 @@ Func Supply_Craft($item)
         Return False
     EndIf
     Sleep(1000)
-    If Not Supply_BalanceGold() Then Return False
     Local $after=Supply_Stock($item)
     If $after<=$before Then
         AddOns_Out("[SUPPLY] Craft did not produce "&$item&"; inventory count did not increase")
