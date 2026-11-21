@@ -255,7 +255,7 @@ Func Supply_SellEctos($minimum)
             ; Never let a sale push carried gold over the 100k cap.
             If Item_GetInventoryInfo("GoldCharacter")+$price>100000 Then Supply_KeepGold()
             If Item_GetInventoryInfo("GoldCharacter")+$price>100000 Then
-                $stopReason="cannot deposit carried gold (storage full?)"
+                $stopReason="carried gold "&Item_GetInventoryInfo("GoldCharacter")&"g cannot be deposited (bank "&Item_GetInventoryInfo("GoldStorage")&"g of 1,000,000g)"
                 ExitLoop 2
             EndIf
             Supply_PaceTrade()
@@ -518,6 +518,11 @@ Func Supply_KeepGold($need=0, $target=20000, $low=10000, $high=30000)
         EndIf
     ElseIf $gold>$high And $need<=$target Then
         Item_DepositGold($gold-$target)
+        ; Wait for the transfer to apply, otherwise the caller still sees the old amount.
+        Local $td=TimerInit()
+        Do
+            Sleep(20)
+        Until Item_GetInventoryInfo("GoldCharacter")<>$gold Or TimerDiff($td)>1500
     EndIf
     Return Item_GetInventoryInfo("GoldCharacter")>=$need
 EndFunc
