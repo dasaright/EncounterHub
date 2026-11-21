@@ -34,7 +34,7 @@ Func Supply_NPCCoords($name, ByRef $x, ByRef $y)
         Case "Kwat" ; Essence of Celerity
             $x=3666
             $y=90
-        Case "Alcus Nailbiter" ; Armor of Salvation
+        Case "Alcus Nailbiter" ; Armor of Salvation and Scrolls of Resurrection
             $x=3743
             $y=-106
         Case "Eyja" ; Grail of Might
@@ -259,7 +259,7 @@ Func Supply_Craft($item)
             $recipe[1][1]=50
         Case "Res Scrolls"
             $model=$GC_I_SUPPLY_RES_SCROLL
-            $npc="Edwin"
+            $npc="Alcus Nailbiter" ; also crafts Scrolls of Resurrection
             $recipe[0][0]=$GC_I_MODELID_BONES
             $recipe[0][1]=25
             $recipe[1][0]=$GC_I_MODELID_PLANT_FIBRES
