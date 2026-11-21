@@ -20,22 +20,95 @@ EndFunc
 Func Supply_ManualRequestPending()
     Return FileExists(Supply_RequestPath())
 EndFunc
-Func Supply_NPC($name)
+; Known Embark Beach NPC positions (same coordinates used by gw-suite and BotsHub).
+; Name decoding is asynchronous and can time out, so these positions are used to
+; walk to the NPC first and as a fallback when the name lookup comes back empty.
+Func Supply_NPCCoords($name, ByRef $x, ByRef $y)
+    Switch $name
+        Case "Shad" ; basic material trader
+            $x=2997
+            $y=-2271
+        Case "Argus" ; rare material trader
+            $x=2928
+            $y=-2452
+        Case "Kwat" ; Essence of Celerity
+            $x=3666
+            $y=90
+        Case "Alcus Nailbiter" ; Armor of Salvation
+            $x=3743
+            $y=-106
+        Case "Eyja" ; Grail of Might
+            $x=3414
+            $y=644
+        Case Else
+            Return False
+    EndSwitch
+    Return True
+EndFunc
+Func Supply_NPCByName($name)
     Local $agents = Agent_GetAgentArray()
     For $i = 1 To $agents[0]
         Local $p = $agents[$i]
-        If Agent_GetAgentInfo($p,"IsLivingType") And StringInStr(Agent_GetAgentInfo($p,"Name"),$name)>0 Then Return $p
+        If Not Agent_GetAgentInfo($p,"IsLivingType") Then ContinueLoop
+        If StringInStr(Agent_GetAgentInfo($p,"Name"),$name)>0 Then Return $p
+    Next
+    Return 0
+EndFunc
+Func Supply_NPCNearXY($x, $y, $maxRange=600)
+    Local $agents = Agent_GetAgentArray()
+    Local $best=0, $bestDist=$maxRange
+    For $i = 1 To $agents[0]
+        Local $p = $agents[$i]
+        If Not Agent_GetAgentInfo($p,"IsLivingType") Then ContinueLoop
+        If Agent_GetAgentInfo($p,"Allegiance")<>$GC_I_ALLEGIANCE_NPC Then ContinueLoop ; NPCs only, never players
+        If Agent_GetAgentInfo($p,"IsDead") Then ContinueLoop
+        Local $d=Agent_GetDistanceToXY($x,$y,$p)
+        If $d<$bestDist Then
+            $best=$p
+            $bestDist=$d
+        EndIf
+    Next
+    Return $best
+EndFunc
+Func Supply_NPC($name)
+    Local $x=0,$y=0
+    Local $hasCoords=Supply_NPCCoords($name,$x,$y)
+    ; Retry the name lookup: a decode that times out returns an empty name.
+    For $attempt=1 To 3
+        Local $p=Supply_NPCByName($name)
+        If $p<>0 Then Return $p
+        If $hasCoords Then
+            $p=Supply_NPCNearXY($x,$y)
+            If $p<>0 Then
+                AddOns_Out("[SUPPLY] Using NPC at the known position of "&$name&" (name lookup unavailable)")
+                Return $p
+            EndIf
+        EndIf
+        Sleep(500)
     Next
     Return 0
 EndFunc
 Func Supply_Talk($name)
+    Local $x=0,$y=0
+    ; Walk near the NPC first so it is in range and loaded before searching.
+    If Supply_NPCCoords($name,$x,$y) And Agent_GetDistanceToXY($x,$y)>300 Then AddOns_MoveTo($x,$y,"",50)
     Local $p = Supply_NPC($name)
     If $p=0 Then
         AddOns_Out("[SUPPLY] NPC not found: "&$name)
         Return False
     EndIf
     Agent_GoNPC($p)
-    Sleep(1200)
+    ; Agent_GoNPC only starts the walk; wait until the character actually arrives.
+    Local $timer=TimerInit()
+    While Agent_GetDistance($p)>150 And TimerDiff($timer)<15000
+        Sleep(250)
+    WEnd
+    If Agent_GetDistance($p)>150 Then
+        AddOns_Out("[SUPPLY] Could not reach NPC: "&$name)
+        Return False
+    EndIf
+    Agent_GoNPC($p)
+    Sleep(1000)
     Return True
 EndFunc
 Func Supply_Count($model)
