@@ -1,5 +1,8 @@
 #include-once
 Global $g_i_SupplyQuoteModel = 0, $g_i_SupplyQuoteID = 0
+; Minimum time between trader transactions: ~6 per second.
+Global Const $GC_I_SUPPLY_TRADE_INTERVAL_MS = 165
+Global $g_h_SupplyLastTrade = 0
 Global Const $GC_I_SUPPLY_EMBARK = 857
 Global Const $GC_I_SUPPLY_RES_SCROLL = 26501
 Global $g_b_SupplyBusy = False
@@ -255,13 +258,13 @@ Func Supply_SellEctos($minimum)
                 $stopReason="cannot deposit carried gold (storage full?)"
                 ExitLoop 2
             EndIf
+            Supply_PaceTrade()
             Core_Enqueue($g_p_TraderSell,4)
-            Sleep(150)
             $sold+=1
             $earned+=$price
             If Mod($sold,10)=0 Then
                 Supply_KeepGold()
-                If Not Supply_WaitGone($model,$start-($sold-3),2000) Then
+                If Not Supply_WaitGone($model,$start-($sold-6),2000) Then
                     $stopReason="sales are not going through (sent "&$sold&", sold "&($start-Supply_Count($model))&")"
                     ExitLoop 2
                 EndIf
@@ -273,7 +276,7 @@ Func Supply_SellEctos($minimum)
     Local $confirmed=$start-Supply_Count($model)
     If $sold>0 Then AddOns_Out("[SUPPLY] Sold "&$confirmed&" ecto(s) for about "&$earned&"g"&($stopReason<>"" ? "; stopped: "&$stopReason : ""))
     If $sold=0 And $stopReason<>"" Then AddOns_Out("[SUPPLY] No ectos sold: "&$stopReason)
-    If $confirmed<$sold-3 Then
+    If $confirmed<$sold-6 Then
         AddOns_Out("[SUPPLY] Ecto sales not confirmed (sent "&$sold&", sold "&$confirmed&"); stopping")
         Return False
     EndIf
@@ -340,6 +343,15 @@ Func Supply_QuoteItem($id, $timeoutMs=3000)
     Return Memory_Read($g_f_TraderCostValue,"dword")
 EndFunc
 ; Executes exactly one trader transaction for the quote currently held.
+; Hold the next trader transaction until the pacing interval has passed.
+Func Supply_PaceTrade()
+    If $g_h_SupplyLastTrade<>0 Then
+        While TimerDiff($g_h_SupplyLastTrade)<$GC_I_SUPPLY_TRADE_INTERVAL_MS
+            Sleep(5)
+        WEnd
+    EndIf
+    $g_h_SupplyLastTrade=TimerInit()
+EndFunc
 Func Supply_TraderBuy()
     ; Core_Enqueue has no return value; success is confirmed by the inventory count.
     Core_Enqueue($g_p_TraderBuy,4)
@@ -532,8 +544,8 @@ Func Supply_BuyLot($i, $goldFloor)
         AddOns_Out("[SUPPLY] Stopping purchases: cannot carry "&$quote&"g for the next lot of "&Supply_MatName($i))
         Return 0
     EndIf
+    Supply_PaceTrade()
     Supply_TraderBuy()
-    Sleep(150)
     Return $quote
 EndFunc
 ; Craft up to $count of $item at its crafter, in batches. Returns the number crafted.
@@ -704,7 +716,7 @@ Func Supply_Produce($profile)
             $lots+=1
             $sent+=1
             ; Every 10 lots, make sure purchases are actually arriving.
-            If Mod($sent,10)=0 And Not Supply_WaitArrival($model,$start+($sent-3)*$GC_I_SUPPLY_TRADER_LOT,2000) Then
+            If Mod($sent,10)=0 And Not Supply_WaitArrival($model,$start+($sent-6)*$GC_I_SUPPLY_TRADER_LOT,2000) Then
                 AddOns_Out("[SUPPLY] Stopping purchases: "&Supply_MatName($i)&" lots are not arriving (sent "&$sent&", received "&Floor((Supply_Count($model)-$start)/$GC_I_SUPPLY_TRADER_LOT)&")")
                 $stopped=True
                 ExitLoop
@@ -760,6 +772,9 @@ Func Supply_Run($manual)
         If $profile<>"Full Conset" Or Supply_ManualConsetOK() Then
             If Supply_SellEctos($min) Then
                 If Not Supply_Produce($profile) Then $l_b_SupplySuccess=False
+                ; Sales can be blocked when carried and bank gold are both full; buying
+                ; materials frees room, so try the remaining ectos once more.
+                If Supply_Count($GC_I_MODELID_GLOB_OF_ECTOPLASM)>0 Then Supply_SellEctos($min)
             Else
                 $l_b_SupplySuccess=False
                 AddOns_Out("[SUPPLY] Routine stopped: required merchant interaction failed")
