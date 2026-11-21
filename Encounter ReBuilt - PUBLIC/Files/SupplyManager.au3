@@ -1,4 +1,5 @@
 #include-once
+Global $g_i_SupplyQuoteModel = 0, $g_i_SupplyQuoteID = 0
 Global Const $GC_I_SUPPLY_EMBARK = 857
 Global Const $GC_I_SUPPLY_RES_SCROLL = 26501
 Global $g_b_SupplyBusy = False
@@ -195,46 +196,6 @@ EndFunc
 Func Supply_Count($model)
     Return AddOns_GetInventoryItemCountbyModelID($model,True)
 EndFunc
-; Keep character platinum usable for the next transaction, moving it to/from storage.
-; Guild Wars limits carried gold to 100,000g and storage to 1,000,000g.
-Func Supply_BalanceGold($required=0)
-    Local Const $LC_I_CHARACTER_GOLD_CAP=100000
-    Local Const $LC_I_STORAGE_GOLD_CAP=1000000
-    Local Const $LC_I_DEPOSIT_THRESHOLD=75000
-    If $required<0 Or $required>$LC_I_CHARACTER_GOLD_CAP Then
-        AddOns_Out("[SUPPLY] Gold balance request is outside the 0-100,000g inventory limit")
-        Return False
-    EndIf
-    Local $gold=Item_GetInventoryInfo("GoldCharacter")
-    Local $bank=Item_GetInventoryInfo("GoldStorage")
-    If $gold<$required Then
-        Local $withdraw=$required-$gold
-        If $withdraw>$bank Then $withdraw=$bank
-        If $withdraw>$LC_I_CHARACTER_GOLD_CAP-$gold Then $withdraw=$LC_I_CHARACTER_GOLD_CAP-$gold
-        If $withdraw<=0 Then
-            AddOns_Out("[SUPPLY] Not enough platinum: need "&$required&"g, have "&$gold&"g in inventory and "&$bank&"g in storage")
-            Return False
-        EndIf
-        Item_WithdrawGold($withdraw)
-        Sleep(500)
-        $gold=Item_GetInventoryInfo("GoldCharacter")
-        $bank=Item_GetInventoryInfo("GoldStorage")
-        If $gold<$required Then
-            AddOns_Out("[SUPPLY] Could not withdraw enough platinum; inventory has "&$gold&"g, required "&$required&"g")
-            Return False
-        EndIf
-    ElseIf $required=0 And $gold>=$LC_I_DEPOSIT_THRESHOLD And $bank<$LC_I_STORAGE_GOLD_CAP Then
-        Item_DepositGold()
-        Sleep(500)
-        $gold=Item_GetInventoryInfo("GoldCharacter")
-        $bank=Item_GetInventoryInfo("GoldStorage")
-        If $gold>=$LC_I_DEPOSIT_THRESHOLD And $bank>=$LC_I_STORAGE_GOLD_CAP Then
-            AddOns_Out("[SUPPLY] Storage is full; cannot clear carried platinum for further sales")
-            Return False
-        EndIf
-    EndIf
-    Return Item_GetInventoryInfo("GoldCharacter")>=$required
-EndFunc
 Func Supply_Stock($item)
     Switch $item
         Case "Essence of Celerity"
@@ -248,43 +209,83 @@ Func Supply_Stock($item)
     EndSwitch
     Return 0
 EndFunc
-Func Supply_QuoteSell($itemID)
+Func Supply_QuoteSell($itemID, $timeoutMs=3000)
+    ; Wait for a NEW quote: the last quote may already be for this same item (e.g. the
+    ; Full Conset price check), so matching the item ID alone can return a stale price.
+    Local $old=Memory_Read($g_i_TraderQuoteID)
     DllStructSetData($g_d_RequestQuoteSell,2,$itemID)
     Core_Enqueue($g_p_RequestQuoteSell,8)
     Local $timer=TimerInit()
     Do
-        Sleep(50)
-    Until Memory_Read($g_i_TraderCostID,"dword")=$itemID Or TimerDiff($timer)>5000
-    If TimerDiff($timer)>5000 Then Return 0
+        Sleep(10)
+    Until Memory_Read($g_i_TraderQuoteID)<>$old Or TimerDiff($timer)>$timeoutMs
+    If Memory_Read($g_i_TraderQuoteID)=$old Then Return 0
+    If Memory_Read($g_i_TraderCostID,"dword")<>$itemID Then Return 0
     Return Memory_Read($g_f_TraderCostValue,"dword")
 EndFunc
+; Sell ectos to the rare material trader while the live quote stays at or above
+; $minimum: ~3 sales per second, carried gold kept around 20k by depositing as it
+; goes, and sales verified in bulk (every 10) instead of one by one.
 Func Supply_SellEctos($minimum)
+    Local $model=$GC_I_MODELID_GLOB_OF_ECTOPLASM
+    If Supply_Count($model)=0 Then Return True
     If Not Supply_Talk("Argus") Then Return False
     Local $items=Item_GetInventoryArray()
+    Local $start=Supply_Count($model),$sold=0,$earned=0,$stopReason=""
     For $i=0 To UBound($items,$UBOUND_ROWS)-1
-        If $items[$i][$GC_I_INVENTORY_MODELID]<>$GC_I_MODELID_GLOB_OF_ECTOPLASM Then ContinueLoop
+        If $items[$i][$GC_I_INVENTORY_MODELID]<>$model Then ContinueLoop
         Local $id=$items[$i][$GC_I_INVENTORY_ITEMID],$qty=$items[$i][$GC_I_INVENTORY_QUANTITY]
         For $j=1 To $qty
             Local $price=Supply_QuoteSell($id)
-            If $price<$minimum Or $price<=0 Then
-                AddOns_Out("[SUPPLY] Ecto sale stopped at quote "&$price&"g (minimum "&$minimum&"g)")
-                Return True
+            If $price<=0 Then
+                If Not Supply_Talk("Argus") Then Return False
+                $price=Supply_QuoteSell($id)
             EndIf
-            If Not Supply_BalanceGold() Then Return False
-            Local $beforeEctos=Supply_Count($GC_I_MODELID_GLOB_OF_ECTOPLASM)
-            If Not Merchant_SellItem($id,1,True) Then
-                AddOns_Out("[SUPPLY] Ecto sale request failed; carried platinum was balanced before selling")
-                Return False
+            If $price<=0 Then
+                $stopReason="no live quote"
+                ExitLoop 2
             EndIf
-            Sleep(350)
-            If Supply_Count($GC_I_MODELID_GLOB_OF_ECTOPLASM)>=$beforeEctos Then
-                AddOns_Out("[SUPPLY] Ecto sale was not confirmed; stopping to avoid a false success")
-                Return False
+            If $price<$minimum Then
+                $stopReason="quote "&$price&"g is below the "&$minimum&"g minimum"
+                ExitLoop 2
             EndIf
-            If Not Supply_BalanceGold() Then Return False
+            ; Never let a sale push carried gold over the 100k cap.
+            If Item_GetInventoryInfo("GoldCharacter")+$price>100000 Then Supply_KeepGold()
+            If Item_GetInventoryInfo("GoldCharacter")+$price>100000 Then
+                $stopReason="cannot deposit carried gold (storage full?)"
+                ExitLoop 2
+            EndIf
+            Core_Enqueue($g_p_TraderSell,4)
+            Sleep(150)
+            $sold+=1
+            $earned+=$price
+            If Mod($sold,10)=0 Then
+                Supply_KeepGold()
+                If Not Supply_WaitGone($model,$start-($sold-3),2000) Then
+                    $stopReason="sales are not going through (sent "&$sold&", sold "&($start-Supply_Count($model))&")"
+                    ExitLoop 2
+                EndIf
+            EndIf
         Next
     Next
+    Supply_WaitGone($model,$start-$sold,3000)
+    Supply_KeepGold()
+    Local $confirmed=$start-Supply_Count($model)
+    If $sold>0 Then AddOns_Out("[SUPPLY] Sold "&$confirmed&" ecto(s) for about "&$earned&"g"&($stopReason<>"" ? "; stopped: "&$stopReason : ""))
+    If $sold=0 And $stopReason<>"" Then AddOns_Out("[SUPPLY] No ectos sold: "&$stopReason)
+    If $confirmed<$sold-3 Then
+        AddOns_Out("[SUPPLY] Ecto sales not confirmed (sent "&$sold&", sold "&$confirmed&"); stopping")
+        Return False
+    EndIf
     Return True
+EndFunc
+; Wait until at most $expected of $model are carried (items leaving the bags).
+Func Supply_WaitGone($model, $expected, $timeoutMs)
+    Local $t=TimerInit()
+    While Supply_Count($model)>$expected And TimerDiff($t)<$timeoutMs
+        Sleep(50)
+    WEnd
+    Return Supply_Count($model)<=$expected
 EndFunc
 ; Trader stock is not in the regular merchant item list, and the trader's item
 ; changes after each purchase. Like GwAu3's Merchant_BuyItem, find the trader's
@@ -356,7 +357,11 @@ Func Supply_ManualConsetOK()
             ExitLoop
         EndIf
     Next
-    If $ectoID=0 Or Not Supply_Talk("Argus") Then Return False
+    If $ectoID=0 Then
+        AddOns_Out("[SUPPLY] No ectos to sell; crafting Full Conset from carried and bank gold")
+        Return True
+    EndIf
+    If Not Supply_Talk("Argus") Then Return False
     Local $ecto=Supply_QuoteSell($ectoID)
     Local $cost=10*$dust+5*$feathers+5*$bones+10*$iron+750
     AddOns_Out("[SUPPLY] Full Conset estimate "&$cost&"g vs ecto "&$ecto&"g")
@@ -377,7 +382,6 @@ Global Const $GC_I_SUPPLY_STACK = 250
 Global Const $GC_I_SUPPLY_CRAFT_FEE = 250
 Global Const $GC_F_SUPPLY_TARGET_SHARE = 0.8
 Global Const $GC_I_SUPPLY_MAX_UNITS = 1000
-Global $g_i_SupplyQuoteModel = 0, $g_i_SupplyQuoteID = 0
 
 Func Supply_MatModel($i)
     Switch $i
@@ -586,7 +590,7 @@ Func Supply_CraftBulk($item, $count)
             ExitLoop
         EndIf
         Local $goldBefore=Item_GetInventoryInfo("GoldCharacter")
-        If Not Supply_BalanceGold($GC_I_SUPPLY_CRAFT_FEE*$k) Then
+        If Not Supply_KeepGold($GC_I_SUPPLY_CRAFT_FEE*$k) Then
             AddOns_Out("[SUPPLY] Cannot carry the "&($GC_I_SUPPLY_CRAFT_FEE*$k)&"g crafting fee for "&$k&" "&$item&"; stopping after "&$made&" craft(s)")
             ExitLoop
         EndIf
@@ -768,10 +772,7 @@ Func Supply_Run($manual)
         Local $threshold=Number(IniRead(Supply_ConfigPath(),"Supply","BankGoldThreshold","800000"))
         Local $bank=Item_GetInventoryInfo("GoldStorage")
         If $bank>=$threshold Then
-            Local $withdraw=100000-Item_GetInventoryInfo("GoldCharacter")
-            If $withdraw>$bank Then $withdraw=$bank
-            If $withdraw>0 Then Item_WithdrawGold($withdraw)
-            Sleep(500)
+            Supply_KeepGold()
             If Not Supply_Produce($profile) Then $l_b_SupplySuccess=False
         Else
             $l_b_SupplySuccess=False
