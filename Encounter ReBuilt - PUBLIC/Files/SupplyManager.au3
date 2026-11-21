@@ -110,6 +110,41 @@ Func Supply_Approach($name, ByRef $ax, ByRef $ay)
     EndSwitch
     Return True
 EndFunc
+; Walk from wherever the character spawned in Embark Beach to the central start point
+; (2000,250), using the per-spawn routes from gw-suite's MoveToStartingPointEmbark.
+; The nearest known spawn is used, since the character may have moved a little.
+Func Supply_MoveToCentre()
+    ; spawnX, spawnY, then up to two waypoints (0,0 = unused)
+    Local $routes[11][6]=[ _
+        [3385,444,0,0,0,0], _
+        [325,-2533,-116,-1084,750,-215], _
+        [1055,-3165,-116,-1084,750,-215], _
+        [-1370,967,-960,301,0,0], _
+        [-1739,144,-960,301,0,0], _
+        [2469,2001,0,0,0,0], _
+        [-3335,116,-2364,618,0,0], _
+        [-2998,-1288,-1486,453,0,0], _
+        [-2792,2626,-1486,453,0,0], _
+        [726,3769,1171,1694,0,0], _
+        [1166,2568,1171,1694,0,0]]
+    If Agent_GetDistanceToXY(2000,250)<400 Then Return True
+    Local $best=-1,$bestDist=1600
+    For $r=0 To 10
+        Local $d=Agent_GetDistanceToXY($routes[$r][0],$routes[$r][1])
+        If $d<$bestDist Then
+            $best=$r
+            $bestDist=$d
+        EndIf
+    Next
+    If $best>=0 Then
+        For $w=2 To 4 Step 2
+            If $routes[$best][$w]=0 And $routes[$best][$w+1]=0 Then ContinueLoop
+            AddOns_MoveTo($routes[$best][$w],$routes[$best][$w+1],"",50)
+        Next
+    EndIf
+    AddOns_MoveTo(2000,250,"",50)
+    Return Agent_GetDistanceToXY(2000,250)<400
+EndFunc
 Func Supply_WalkTo($name)
     Local $x=0,$y=0,$ax=0,$ay=0
     If Not Supply_NPCCoords($name,$x,$y) Then Return
@@ -123,7 +158,8 @@ Func Supply_WalkTo($name)
     ElseIf Agent_GetDistanceToXY(3550,60)<800 Then
         AddOns_MoveTo(3550,60,"",30) ; crafter area exit
     Else
-        AddOns_MoveTo(2000,250,"",50) ; central start point
+        ; Fresh from the spawn point: follow that spawn's route through the central start point.
+        Supply_MoveToCentre()
     EndIf
     If Agent_GetDistanceToXY($ax,$ay)>200 And Not AddOns_MoveTo($ax,$ay,"",30) Then
         AddOns_MoveTo(2000,250,"",50)
@@ -667,13 +703,6 @@ Func Supply_Run($manual)
     $g_i_BotState=$GC_I_BOTSTATE_IDLE
     AddOns_Out("[SUPPLY] Travelling to Embark Beach (American district)")
     If Not Map_TravelTo($GC_I_SUPPLY_EMBARK,0,0,0,True) Then
-        If $oldState=$GC_I_BOTSTATE_RUN Then $g_i_BotState=$GC_I_BOTSTATE_RUN
-        $g_b_SupplyBusy=False
-        Return False
-    EndIf
-    AddOns_Out("[SUPPLY] Approaching Foreman the Crier to reach the central NPC area")
-    If Not Supply_Talk("Foreman the Crier") Then
-        AddOns_Out("[SUPPLY] Routine stopped: could not reach Foreman the Crier")
         If $oldState=$GC_I_BOTSTATE_RUN Then $g_i_BotState=$GC_I_BOTSTATE_RUN
         $g_b_SupplyBusy=False
         Return False
