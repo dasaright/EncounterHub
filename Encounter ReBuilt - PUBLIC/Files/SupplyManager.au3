@@ -199,156 +199,6 @@ Func Supply_BalanceGold($required=0)
     EndIf
     Return Item_GetInventoryInfo("GoldCharacter")>=$required
 EndFunc
-Func Supply_BuyMats($item)
-    Local $models[5]=[$GC_I_MODELID_BONES,$GC_I_MODELID_PLANT_FIBRES,$GC_I_MODELID_DUST,$GC_I_MODELID_FEATHERS,$GC_I_MODELID_IRON]
-    Local $need[5]
-    Switch $item
-        Case "Essence of Celerity"
-            $need[2]=50
-            $need[3]=50
-        Case "Res Scrolls"
-            $need[0]=25
-            $need[1]=25
-        Case "Grail of Might"
-            $need[2]=50
-            $need[4]=50
-        Case "Armor of Salvation"
-            $need[0]=50
-            $need[4]=50
-    EndSwitch
-
-    ; Common materials at a Guild Wars material trader are sold only in lots of 10.
-    ; Round the requested amount up to whole lots (e.g. 25 -> 30).
-    Local Const $LC_I_TRADER_LOT=10
-    For $i=0 To 4
-        Local $current=Supply_Count($models[$i])
-        Local $missing=$need[$i]-$current
-        If $missing<=0 Then ContinueLoop
-        If Not Supply_Talk("Shad") Then Return False
-
-        Local $lots=Ceiling($missing/$LC_I_TRADER_LOT)
-        AddOns_Out("[SUPPLY] Buying "&($lots*$LC_I_TRADER_LOT)&" of material model "&$models[$i]&" in "&$lots&" trader lot(s) of 10")
-        For $batch=1 To $lots
-            ; One trader transaction buys one 10-material lot. Quote it first so
-            ; the character carries the actual live price instead of an arbitrary reserve.
-            Local $quote=Supply_QuoteBuy($models[$i])
-            If $quote<=0 Then
-                ; The trader window can close (e.g. after a gold transfer); reopen it once and retry.
-                If Not Supply_Talk("Shad") Then Return False
-                $quote=Supply_QuoteBuy($models[$i])
-            EndIf
-            If $quote<=0 Then
-                AddOns_Out("[SUPPLY] No valid live trader quote for model "&$models[$i]&"; quote item ID "&Memory_Read($g_i_TraderCostID,"dword")&", carried gold "&Item_GetInventoryInfo("GoldCharacter")&"g")
-                Return False
-            EndIf
-            Local $goldBefore=Item_GetInventoryInfo("GoldCharacter")
-            If Not Supply_BalanceGold($quote) Then
-                AddOns_Out("[SUPPLY] Cannot afford quoted 10-unit lot for model "&$models[$i]&": quote "&$quote&"g, carried gold "&Item_GetInventoryInfo("GoldCharacter")&"g, bank gold "&Item_GetInventoryInfo("GoldStorage")&"g")
-                Return False
-            EndIf
-            If Item_GetInventoryInfo("GoldCharacter")<>$goldBefore Then
-                ; A storage transfer happened; reopen the trader and refresh the quote before buying.
-                If Not Supply_Talk("Shad") Then Return False
-                $quote=Supply_QuoteBuy($models[$i])
-                If $quote<=0 Or $quote>Item_GetInventoryInfo("GoldCharacter") Then
-                    AddOns_Out("[SUPPLY] Trader quote unavailable after gold withdrawal for model "&$models[$i]&" (quote "&$quote&"g, carried "&Item_GetInventoryInfo("GoldCharacter")&"g)")
-                    Return False
-                EndIf
-            EndIf
-
-            Local $before=Supply_Count($models[$i])
-            ; One trader transaction = one 10-unit lot. (Merchant_BuyItem's quantity is a
-            ; transaction count, so passing 10 there could buy up to 100 materials.)
-            If $quote>Item_GetInventoryInfo("GoldCharacter") Or Not Supply_TraderBuy() Then
-                AddOns_Out("[SUPPLY] Trader purchase rejected for model "&$models[$i]&" (10-unit lot); quote "&$quote&"g, carried gold "&Item_GetInventoryInfo("GoldCharacter")&"g, bank gold "&Item_GetInventoryInfo("GoldStorage")&"g, free slots "&AddOns_GetEmptyInventorySlotCount()&", quote item ID "&Memory_Read($g_i_TraderCostID,"dword")&".")
-                Return False
-            EndIf
-            AddOns_Out("[SUPPLY] Submitted trader purchase for model "&$models[$i]&" at "&$quote&"g per 10-unit lot")
-            Local $wait=TimerInit()
-            Do
-                Sleep(100)
-            Until Supply_Count($models[$i])>=$before+$LC_I_TRADER_LOT Or TimerDiff($wait)>5000
-            Local $after=Supply_Count($models[$i])
-            If $after<$before+$LC_I_TRADER_LOT Then
-                AddOns_Out("[SUPPLY] Trader purchase was not confirmed for model "&$models[$i]&"; expected +"&$LC_I_TRADER_LOT&", observed +"&($after-$before))
-                Return False
-            EndIf
-            ; Give the trader a moment to publish its replacement stock item before the next quote.
-            Sleep(400)
-            ; Do not deposit between lots: buying only lowers carried gold, and depositing
-            ; everything left 0g carried so the next quote failed.
-        Next
-
-        Local $remaining=$need[$i]-Supply_Count($models[$i])
-        If $remaining>0 Then
-            AddOns_Out("[SUPPLY] Material purchase incomplete for model "&$models[$i]&"; still missing "&$remaining)
-            Return False
-        EndIf
-    Next
-    Return True
-EndFunc
-Func Supply_Craft($item)
-    If AddOns_GetEmptyInventorySlotCount()<=1 Then
-        AddOns_Out("[SUPPLY] Cannot craft "&$item&": fewer than 2 free inventory slots")
-        Return False
-    EndIf
-    If Not Supply_BuyMats($item) Then
-        AddOns_Out("[SUPPLY] Cannot craft "&$item&": required materials could not be prepared")
-        Return False
-    EndIf
-    Local $model=0,$npc="", $recipe[2][2]
-    Switch $item
-        Case "Essence of Celerity"
-            $model=$GC_I_MODELID_ESSENCE_OF_CELERITY
-            $npc="Kwat"
-            $recipe[0][0]=$GC_I_MODELID_DUST
-            $recipe[0][1]=50
-            $recipe[1][0]=$GC_I_MODELID_FEATHERS
-            $recipe[1][1]=50
-        Case "Res Scrolls"
-            $model=$GC_I_SUPPLY_RES_SCROLL
-            $npc="Alcus Nailbiter" ; also crafts Scrolls of Resurrection
-            $recipe[0][0]=$GC_I_MODELID_BONES
-            $recipe[0][1]=25
-            $recipe[1][0]=$GC_I_MODELID_PLANT_FIBRES
-            $recipe[1][1]=25
-        Case "Grail of Might"
-            $model=$GC_I_MODELID_GRAIL_OF_MIGHT
-            $npc="Eyja"
-            $recipe[0][0]=$GC_I_MODELID_DUST
-            $recipe[0][1]=50
-            $recipe[1][0]=$GC_I_MODELID_IRON
-            $recipe[1][1]=50
-        Case "Armor of Salvation"
-            $model=$GC_I_MODELID_ARMOR_OF_SALVATION
-            $npc="Alcus Nailbiter"
-            $recipe[0][0]=$GC_I_MODELID_BONES
-            $recipe[0][1]=50
-            $recipe[1][0]=$GC_I_MODELID_IRON
-            $recipe[1][1]=50
-    EndSwitch
-    If Not Supply_Talk($npc) Then
-        AddOns_Out("[SUPPLY] Crafter unavailable for "&$item&": "&$npc)
-        Return False
-    EndIf
-    If Not Supply_BalanceGold(250) Then
-        AddOns_Out("[SUPPLY] Cannot craft "&$item&": 250g crafting fee is unavailable in carried platinum")
-        Return False
-    EndIf
-    Local $before=Supply_Stock($item)
-    If Not Merchant_CraftItem($model,250,$recipe,1) Then
-        AddOns_Out("[SUPPLY] Craft request failed for "&$item&"; check carried platinum and recipe materials")
-        Return False
-    EndIf
-    Sleep(1000)
-    Local $after=Supply_Stock($item)
-    If $after<=$before Then
-        AddOns_Out("[SUPPLY] Craft did not produce "&$item&"; inventory count did not increase")
-        Return False
-    EndIf
-    AddOns_Out("[SUPPLY] Crafted "&$item&" (stock "&$before&" -> "&$after&")")
-    Return True
-EndFunc
 Func Supply_Stock($item)
     Switch $item
         Case "Essence of Celerity"
@@ -462,39 +312,350 @@ Func Supply_ManualConsetOK()
     AddOns_Out("[SUPPLY] Full Conset estimate "&$cost&"g vs ecto "&$ecto&"g")
     Return $ecto>0 And $cost<=($ecto*0.8)
 EndFunc
-Func Supply_Produce($profile)
-    Local $passes=0
-    Local $gold=Item_GetInventoryInfo("GoldCharacter")
-    Local $slots=AddOns_GetEmptyInventorySlotCount()
-    If Not Supply_BalanceGold(250) Then
-        AddOns_Out("[SUPPLY] Production skipped: unable to prepare the 250g crafting fee from carried or bank platinum")
-        Return False
+; ---------------------------------------------------------------------------------------------
+; Bulk supply production
+;   1. Plan    - quote every needed material at Shad, work out how many units the total gold
+;                (carried + bank) can afford at current prices, target 80% of that so rising
+;                prices during the purchase are absorbed, then cap by inventory + storage space.
+;   2. Buy     - buy every 10-unit lot for the whole plan in one visit to Shad, moving full
+;                material stacks into storage whenever the bags fill up.
+;   3. Craft   - walk to each crafter once and craft in batches, withdrawing materials from
+;                storage between batches.
+; ---------------------------------------------------------------------------------------------
+Global Const $GC_I_SUPPLY_TRADER_LOT = 10
+Global Const $GC_I_SUPPLY_STACK = 250
+Global Const $GC_I_SUPPLY_CRAFT_FEE = 250
+Global Const $GC_F_SUPPLY_TARGET_SHARE = 0.8
+Global Const $GC_I_SUPPLY_MAX_UNITS = 1000
+
+Func Supply_MatModel($i)
+    Switch $i
+        Case 0
+            Return $GC_I_MODELID_BONES
+        Case 1
+            Return $GC_I_MODELID_PLANT_FIBRES
+        Case 2
+            Return $GC_I_MODELID_DUST
+        Case 3
+            Return $GC_I_MODELID_FEATHERS
+        Case 4
+            Return $GC_I_MODELID_IRON
+    EndSwitch
+    Return 0
+EndFunc
+Func Supply_MatName($i)
+    Local $names[5]=["bones","plant fibres","dust","feathers","iron"]
+    Return $names[$i]
+EndFunc
+; Recipe for one crafted item: output model, crafter, per-item material needs (index 0-4)
+; and the largest quantity to request in one craft.
+Func Supply_Recipe($item, ByRef $model, ByRef $npc, ByRef $need, ByRef $batch)
+    Local $n[5]=[0,0,0,0,0]
+    Switch $item
+        Case "Essence of Celerity"
+            $model=$GC_I_MODELID_ESSENCE_OF_CELERITY
+            $npc="Kwat"
+            $n[2]=50
+            $n[3]=50
+            $batch=5
+        Case "Res Scrolls"
+            $model=$GC_I_SUPPLY_RES_SCROLL
+            $npc="Alcus Nailbiter" ; also crafts Scrolls of Resurrection
+            $n[0]=25
+            $n[1]=25
+            $batch=10
+        Case "Grail of Might"
+            $model=$GC_I_MODELID_GRAIL_OF_MIGHT
+            $npc="Eyja"
+            $n[2]=50
+            $n[4]=50
+            $batch=5
+        Case "Armor of Salvation"
+            $model=$GC_I_MODELID_ARMOR_OF_SALVATION
+            $npc="Alcus Nailbiter"
+            $n[0]=50
+            $n[4]=50
+            $batch=5
+        Case Else
+            Return False
+    EndSwitch
+    $need=$n
+    Return True
+EndFunc
+; Items produced per planned unit (a Full Conset unit is one of each consumable).
+Func Supply_ProfileItems($profile)
+    If $profile="Full Conset" Then
+        Local $set[3]=["Essence of Celerity","Grail of Might","Armor of Salvation"]
+        Return $set
     EndIf
-    If $slots<=1 Then
-        AddOns_Out("[SUPPLY] Production skipped: only "&$slots&" free inventory slots; at least 2 are required")
-        Return False
+    Local $one[1]=[$profile]
+    Return $one
+EndFunc
+; Materials the crafters can use (main bags only, as Merchant_CraftItem requires).
+Func Supply_BagCount($model)
+    Return AddOns_GetInventoryItemCountbyModelID($model,False)
+EndFunc
+; Materials available for this routine: main bags + regular storage panes.
+Func Supply_MatOwned($i)
+    Local $model=Supply_MatModel($i)
+    Return Supply_BagCount($model)+AddOns_GetStorageItemCountbyModelID($model,False)
+EndFunc
+; Gold needed to buy the missing materials for $units plus the crafting fees.
+Func Supply_PlanCost($units, ByRef $perUnit, ByRef $owned, ByRef $lotPrice, $itemsPerUnit)
+    Local $cost=$GC_I_SUPPLY_CRAFT_FEE*$units*$itemsPerUnit
+    For $i=0 To 4
+        If $perUnit[$i]=0 Then ContinueLoop
+        Local $missing=$perUnit[$i]*$units-$owned[$i]
+        If $missing>0 Then $cost+=Ceiling($missing/$GC_I_SUPPLY_TRADER_LOT)*$lotPrice[$i]
+    Next
+    Return $cost
+EndFunc
+; New 250-stacks needed to hold the missing materials for $units.
+Func Supply_PlanSlots($units, ByRef $perUnit, ByRef $owned)
+    Local $slots=0
+    For $i=0 To 4
+        If $perUnit[$i]=0 Then ContinueLoop
+        Local $missing=$perUnit[$i]*$units-$owned[$i]
+        If $missing>0 Then $slots+=Ceiling(Ceiling($missing/$GC_I_SUPPLY_TRADER_LOT)*$GC_I_SUPPLY_TRADER_LOT/$GC_I_SUPPLY_STACK)
+    Next
+    Return $slots
+EndFunc
+; Move full stacks of the given materials into storage to free bag space.
+Func Supply_StashMats(ByRef $perUnit)
+    Local $before=AddOns_GetEmptyInventorySlotCount()
+    For $i=0 To 4
+        If $perUnit[$i]=0 Then ContinueLoop
+        AddOns_DepositItemsToStorage(Supply_MatModel($i),-1,1,True,False)
+    Next
+    Sleep(300)
+    Local $after=AddOns_GetEmptyInventorySlotCount()
+    If $after>$before Then AddOns_Out("[SUPPLY] Moved full material stacks to storage ("&($after-$before)&" bag slot(s) freed)")
+    Return $after>$before
+EndFunc
+; Buy one 10-unit lot of material $i at Shad. Returns the price paid, 0 to stop buying.
+Func Supply_BuyLot($i, $goldFloor)
+    Local $model=Supply_MatModel($i)
+    Local $quote=Supply_QuoteBuy($model)
+    If $quote<=0 Then
+        ; The trader window can close (e.g. after a gold or item transfer); reopen once and retry.
+        If Not Supply_Talk("Shad") Then Return 0
+        $quote=Supply_QuoteBuy($model)
     EndIf
-    While Item_GetInventoryInfo("GoldCharacter")>=250 And AddOns_GetEmptyInventorySlotCount()>1
-        Local $item=$profile
-        If $profile="Full Conset" Then
-            Local $e=Supply_Stock("Essence of Celerity"),$g=Supply_Stock("Grail of Might"),$a=Supply_Stock("Armor of Salvation")
-            If $e<=$g And $e<=$a Then
-                $item="Essence of Celerity"
-            ElseIf $g<=$a Then
-                $item="Grail of Might"
-            Else
-                $item="Armor of Salvation"
-            EndIf
+    If $quote<=0 Then
+        AddOns_Out("[SUPPLY] No live trader quote for "&Supply_MatName($i)&"; stopping purchases")
+        Return 0
+    EndIf
+    ; Keep enough total gold for the remaining crafting fees.
+    If Item_GetInventoryInfo("GoldCharacter")+Item_GetInventoryInfo("GoldStorage")-$quote<$goldFloor Then
+        AddOns_Out("[SUPPLY] Stopping purchases: "&Supply_MatName($i)&" now costs "&$quote&"g per 10 and the rest is reserved for crafting fees")
+        Return 0
+    EndIf
+    Local $goldBefore=Item_GetInventoryInfo("GoldCharacter")
+    If Not Supply_BalanceGold($quote) Then
+        AddOns_Out("[SUPPLY] Stopping purchases: cannot carry "&$quote&"g for the next lot of "&Supply_MatName($i))
+        Return 0
+    EndIf
+    If Item_GetInventoryInfo("GoldCharacter")<>$goldBefore Then
+        ; A storage transfer happened; reopen the trader and refresh the quote before buying.
+        If Not Supply_Talk("Shad") Then Return 0
+        $quote=Supply_QuoteBuy($model)
+        If $quote<=0 Or $quote>Item_GetInventoryInfo("GoldCharacter") Then
+            AddOns_Out("[SUPPLY] Trader quote unavailable after gold withdrawal for "&Supply_MatName($i)&"; stopping purchases")
+            Return 0
         EndIf
-        If Not Supply_Craft($item) Then ExitLoop
-        $passes+=1
-        If $passes>=100 Then ExitLoop
+    EndIf
+    Local $before=Supply_Count($model)
+    Supply_TraderBuy()
+    Local $wait=TimerInit()
+    Do
+        Sleep(100)
+    Until Supply_Count($model)>=$before+$GC_I_SUPPLY_TRADER_LOT Or TimerDiff($wait)>5000
+    If Supply_Count($model)<$before+$GC_I_SUPPLY_TRADER_LOT Then
+        AddOns_Out("[SUPPLY] Trader purchase of "&Supply_MatName($i)&" was not confirmed; stopping purchases")
+        Return 0
+    EndIf
+    ; Give the trader a moment to publish its replacement stock item before the next quote.
+    Sleep(400)
+    Return $quote
+EndFunc
+; Craft up to $count of $item at its crafter, in batches. Returns the number crafted.
+Func Supply_CraftBulk($item, $count)
+    Local $model=0,$npc="",$need[5],$batch=1
+    If $count<=0 Or Not Supply_Recipe($item,$model,$npc,$need,$batch) Then Return 0
+    Local $recipe[2][2],$r=0
+    For $i=0 To 4
+        If $need[$i]=0 Then ContinueLoop
+        $recipe[$r][0]=Supply_MatModel($i)
+        $recipe[$r][1]=$need[$i]
+        $r+=1
+    Next
+    If Not Supply_Talk($npc) Then
+        AddOns_Out("[SUPPLY] Crafter unavailable for "&$item&": "&$npc)
+        Return 0
+    EndIf
+    Local $made=0,$startStock=Supply_Stock($item)
+    While $made<$count
+        Local $want=$count-$made
+        If $want>$batch Then $want=$batch
+        ; Bring this batch's materials from storage into the bags.
+        Local $moved=False
+        For $i=0 To 4
+            If $need[$i]=0 Then ContinueLoop
+            Local $short=$need[$i]*$want-Supply_BagCount(Supply_MatModel($i))
+            If $short>0 And AddOns_GetStorageItemCountbyModelID(Supply_MatModel($i),False)>0 Then
+                AddOns_WithdrawItemsFromStorage(Supply_MatModel($i),-1,$short)
+                $moved=True
+            EndIf
+        Next
+        If $moved Then Sleep(300)
+        ; Craft only what the bags can cover.
+        Local $k=$want
+        For $i=0 To 4
+            If $need[$i]=0 Then ContinueLoop
+            Local $fit=Floor(Supply_BagCount(Supply_MatModel($i))/$need[$i])
+            If $fit<$k Then $k=$fit
+        Next
+        If $k<=0 Then
+            AddOns_Out("[SUPPLY] Out of materials for "&$item&" after "&$made&" craft(s)")
+            ExitLoop
+        EndIf
+        If AddOns_GetEmptyInventorySlotCount()<1 Then
+            AddOns_Out("[SUPPLY] No free bag slot for crafted "&$item&"; stopping after "&$made&" craft(s)")
+            ExitLoop
+        EndIf
+        Local $goldBefore=Item_GetInventoryInfo("GoldCharacter")
+        If Not Supply_BalanceGold($GC_I_SUPPLY_CRAFT_FEE*$k) Then
+            AddOns_Out("[SUPPLY] Cannot carry the "&($GC_I_SUPPLY_CRAFT_FEE*$k)&"g crafting fee for "&$k&" "&$item&"; stopping after "&$made&" craft(s)")
+            ExitLoop
+        EndIf
+        ; Storage transfers can close the crafter window; reopen it before crafting.
+        If $moved Or Item_GetInventoryInfo("GoldCharacter")<>$goldBefore Then
+            If Not Supply_Talk($npc) Then ExitLoop
+        EndIf
+        Local $before=Supply_Stock($item)
+        If Not Merchant_CraftItem($model,$GC_I_SUPPLY_CRAFT_FEE,$recipe,$k) Then
+            AddOns_Out("[SUPPLY] Craft request for "&$k&" "&$item&" was refused; stopping after "&$made&" craft(s)")
+            ExitLoop
+        EndIf
+        Local $wait=TimerInit()
+        Do
+            Sleep(150)
+        Until Supply_Stock($item)>=$before+$k Or TimerDiff($wait)>5000
+        Local $got=Supply_Stock($item)-$before
+        If $got<=0 Then
+            AddOns_Out("[SUPPLY] Craft of "&$item&" did not produce anything; stopping after "&$made&" craft(s)")
+            ExitLoop
+        EndIf
+        $made+=$got
     WEnd
-    If $passes=0 Then
+    If $made>0 Then AddOns_Out("[SUPPLY] Crafted "&$made&" "&$item&" (stock "&$startStock&" -> "&Supply_Stock($item)&")")
+    Return $made
+EndFunc
+Func Supply_Produce($profile)
+    Local $items=Supply_ProfileItems($profile)
+    Local $itemsPerUnit=UBound($items)
+    Local $perUnit[5]=[0,0,0,0,0]
+    For $it=0 To $itemsPerUnit-1
+        Local $model=0,$npc="",$need[5],$batch=1
+        If Not Supply_Recipe($items[$it],$model,$npc,$need,$batch) Then
+            AddOns_Out("[SUPPLY] Unknown supply profile item: "&$items[$it])
+            Return False
+        EndIf
+        For $i=0 To 4
+            $perUnit[$i]+=$need[$i]
+        Next
+    Next
+
+    ; 1. Plan from live prices and total gold.
+    If Not Supply_Talk("Shad") Then Return False
+    Local $lotPrice[5]=[0,0,0,0,0],$owned[5]=[0,0,0,0,0]
+    For $i=0 To 4
+        If $perUnit[$i]=0 Then ContinueLoop
+        $owned[$i]=Supply_MatOwned($i)
+        $lotPrice[$i]=Supply_QuoteBuy(Supply_MatModel($i))
+        If $lotPrice[$i]<=0 Then
+            If Not Supply_Talk("Shad") Then Return False
+            $lotPrice[$i]=Supply_QuoteBuy(Supply_MatModel($i))
+        EndIf
+        If $lotPrice[$i]<=0 Then
+            AddOns_Out("[SUPPLY] Production skipped: no live trader price for "&Supply_MatName($i))
+            Return False
+        EndIf
+    Next
+    Local $budget=Item_GetInventoryInfo("GoldCharacter")+Item_GetInventoryInfo("GoldStorage")
+    Local $afford=0
+    While $afford<$GC_I_SUPPLY_MAX_UNITS And Supply_PlanCost($afford+1,$perUnit,$owned,$lotPrice,$itemsPerUnit)<=$budget
+        $afford+=1
+    WEnd
+    Local $units=Floor($afford*$GC_F_SUPPLY_TARGET_SHARE)
+    ; Space: free bag slots (keeping one per crafted item type plus one spare) and free storage slots.
+    Local $space=AddOns_GetEmptyInventorySlotCount()-($itemsPerUnit+1)+AddOns_GetEmptyStorageSlotCount()
+    Local $byGold=$units
+    While $units>0 And Supply_PlanSlots($units,$perUnit,$owned)>$space
+        $units-=1
+    WEnd
+    Local $priceText=""
+    For $i=0 To 4
+        If $perUnit[$i]>0 Then $priceText&=Supply_MatName($i)&" "&$lotPrice[$i]&"g/10, "
+    Next
+    AddOns_Out("[SUPPLY] Prices: "&StringTrimRight($priceText,2)&"; gold "&$budget&"g affords "&$afford&" "&$profile&", targeting 80% = "&$byGold&($units<$byGold ? " (space limits it to "&$units&")" : ""))
+    If $units<=0 Then
+        AddOns_Out("[SUPPLY] Production skipped: nothing affordable within the 80% target and available space")
+        Return False
+    EndIf
+    If AddOns_GetEmptyInventorySlotCount()<=$itemsPerUnit Then
+        AddOns_Out("[SUPPLY] Production skipped: at least "&($itemsPerUnit+1)&" free bag slots are needed")
+        Return False
+    EndIf
+
+    ; 2. Buy every lot for the whole plan in one visit, keeping the crafting fees in reserve.
+    Local $feeReserve=$GC_I_SUPPLY_CRAFT_FEE*$units*$itemsPerUnit
+    Local $spent=0,$lots=0,$stopped=False
+    For $i=0 To 4
+        If $perUnit[$i]=0 Or $stopped Then ContinueLoop
+        Local $toBuy=Ceiling(($perUnit[$i]*$units-Supply_MatOwned($i))/$GC_I_SUPPLY_TRADER_LOT)
+        If $toBuy<=0 Then ContinueLoop
+        AddOns_Out("[SUPPLY] Buying "&($toBuy*$GC_I_SUPPLY_TRADER_LOT)&" "&Supply_MatName($i)&" ("&$toBuy&" lots)")
+        For $n=1 To $toBuy
+            If AddOns_GetEmptyInventorySlotCount()<=$itemsPerUnit+1 Then
+                If Not Supply_StashMats($perUnit) Or Not Supply_Talk("Shad") Then
+                    AddOns_Out("[SUPPLY] Stopping purchases: bags and storage are full")
+                    $stopped=True
+                    ExitLoop
+                EndIf
+            EndIf
+            Local $paid=Supply_BuyLot($i,$feeReserve)
+            If $paid<=0 Then
+                $stopped=True
+                ExitLoop
+            EndIf
+            $spent+=$paid
+            $lots+=1
+        Next
+    Next
+    AddOns_Out("[SUPPLY] Bought "&$lots&" lot(s) for "&$spent&"g")
+
+    ; Craft what the materials actually cover (purchases may have stopped early).
+    For $i=0 To 4
+        If $perUnit[$i]=0 Then ContinueLoop
+        Local $cover=Floor(Supply_MatOwned($i)/$perUnit[$i])
+        If $cover<$units Then $units=$cover
+    Next
+    If $units<=0 Then
+        AddOns_Out("[SUPPLY] No items were crafted; not enough materials for one "&$profile)
+        Return False
+    EndIf
+
+    ; 3. One trip per crafter.
+    Local $total=0
+    For $it=0 To $itemsPerUnit-1
+        $total+=Supply_CraftBulk($items[$it],$units)
+    Next
+    If $total=0 Then
         AddOns_Out("[SUPPLY] No items were crafted; routine is reporting failure")
         Return False
     EndIf
-    AddOns_Out("[SUPPLY] Production finished: "&$passes&" craft(s) completed")
+    AddOns_Out("[SUPPLY] Production finished: "&$total&" item(s) crafted")
     Return True
 EndFunc
 Func Supply_Run($manual)
