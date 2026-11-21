@@ -307,22 +307,36 @@ EndFunc
 ; Returns the live price of one trader transaction (one 10-unit lot for common
 ; materials) and leaves that quote active so Supply_TraderBuy() executes it.
 Func Supply_QuoteBuy($model)
+    ; The trader item ID is cached so each lot does not rescan the whole item array;
+    ; the cache is refreshed whenever a quote for it fails.
+    If $model=$g_i_SupplyQuoteModel And $g_i_SupplyQuoteID<>0 Then
+        Local $cached=Supply_QuoteItem($g_i_SupplyQuoteID,500)
+        If $cached>0 Then Return $cached
+    EndIf
     Local $ids=Supply_TraderItemIDs($model)
     For $n=1 To $ids[0]
         If $n>3 Then ExitLoop
-        Local $id=$ids[$n],$old=Memory_Read($g_i_TraderQuoteID)
-        DllStructSetData($g_d_RequestQuote,2,$id)
-        Core_Enqueue($g_p_RequestQuote,8)
-        Local $timer=TimerInit()
-        Do
-            Sleep(50)
-        Until Memory_Read($g_i_TraderQuoteID)<>$old Or TimerDiff($timer)>5000
-        If TimerDiff($timer)>5000 Then ContinueLoop
-        If Memory_Read($g_i_TraderCostID,"dword")<>$id Then ContinueLoop
-        Local $value=Memory_Read($g_f_TraderCostValue,"dword")
-        If $value>0 Then Return $value
+        Local $value=Supply_QuoteItem($ids[$n])
+        If $value>0 Then
+            $g_i_SupplyQuoteModel=$model
+            $g_i_SupplyQuoteID=$ids[$n]
+            Return $value
+        EndIf
     Next
+    $g_i_SupplyQuoteID=0
     Return 0
+EndFunc
+Func Supply_QuoteItem($id, $timeoutMs=3000)
+    Local $old=Memory_Read($g_i_TraderQuoteID)
+    DllStructSetData($g_d_RequestQuote,2,$id)
+    Core_Enqueue($g_p_RequestQuote,8)
+    Local $timer=TimerInit()
+    Do
+        Sleep(10)
+    Until Memory_Read($g_i_TraderQuoteID)<>$old Or TimerDiff($timer)>$timeoutMs
+    If Memory_Read($g_i_TraderQuoteID)=$old Then Return 0
+    If Memory_Read($g_i_TraderCostID,"dword")<>$id Then Return 0
+    Return Memory_Read($g_f_TraderCostValue,"dword")
 EndFunc
 ; Executes exactly one trader transaction for the quote currently held.
 Func Supply_TraderBuy()
@@ -363,6 +377,7 @@ Global Const $GC_I_SUPPLY_STACK = 250
 Global Const $GC_I_SUPPLY_CRAFT_FEE = 250
 Global Const $GC_F_SUPPLY_TARGET_SHARE = 0.8
 Global Const $GC_I_SUPPLY_MAX_UNITS = 1000
+Global $g_i_SupplyQuoteModel = 0, $g_i_SupplyQuoteID = 0
 
 Func Supply_MatModel($i)
     Switch $i
@@ -469,11 +484,34 @@ Func Supply_StashMats(ByRef $perUnit)
     Return $after>$before
 EndFunc
 ; Buy one 10-unit lot of material $i at Shad. Returns the price paid, 0 to stop buying.
+; Keep carried gold around $target (like gw-suite's MinMaxGold): top up from the bank
+; when it drops below $low or below $need, deposit the excess above $high. One
+; storage transfer packet; the trader window stays open.
+Func Supply_KeepGold($need=0, $target=20000, $low=10000, $high=30000)
+    Local $gold=Item_GetInventoryInfo("GoldCharacter")
+    If $gold<$low Or $gold<$need Then
+        Local $want=$target
+        If $want<$need Then $want=$need
+        If $want>100000 Then $want=100000
+        If $want>$gold And Item_GetInventoryInfo("GoldStorage")>0 Then
+            Item_WithdrawGold($want-$gold)
+            Local $t=TimerInit()
+            Do
+                Sleep(20)
+            Until Item_GetInventoryInfo("GoldCharacter")<>$gold Or TimerDiff($t)>1500
+        EndIf
+    ElseIf $gold>$high And $need<=$target Then
+        Item_DepositGold($gold-$target)
+    EndIf
+    Return Item_GetInventoryInfo("GoldCharacter")>=$need
+EndFunc
+; Quote and buy one 10-unit lot of material $i without waiting for it to arrive
+; (arrival is checked in bulk by the caller). Returns the price, 0 to stop buying.
 Func Supply_BuyLot($i, $goldFloor)
     Local $model=Supply_MatModel($i)
     Local $quote=Supply_QuoteBuy($model)
     If $quote<=0 Then
-        ; The trader window can close (e.g. after a gold or item transfer); reopen once and retry.
+        ; The trader window can close; reopen once and retry.
         If Not Supply_Talk("Shad") Then Return 0
         $quote=Supply_QuoteBuy($model)
     EndIf
@@ -486,35 +524,23 @@ Func Supply_BuyLot($i, $goldFloor)
         AddOns_Out("[SUPPLY] Stopping purchases: "&Supply_MatName($i)&" now costs "&$quote&"g per 10 and the rest is reserved for crafting fees")
         Return 0
     EndIf
-    Local $goldBefore=Item_GetInventoryInfo("GoldCharacter")
-    If Not Supply_BalanceGold($quote) Then
+    If Not Supply_KeepGold($quote) Then
         AddOns_Out("[SUPPLY] Stopping purchases: cannot carry "&$quote&"g for the next lot of "&Supply_MatName($i))
         Return 0
     EndIf
-    If Item_GetInventoryInfo("GoldCharacter")<>$goldBefore Then
-        ; A storage transfer happened; reopen the trader and refresh the quote before buying.
-        If Not Supply_Talk("Shad") Then Return 0
-        $quote=Supply_QuoteBuy($model)
-        If $quote<=0 Or $quote>Item_GetInventoryInfo("GoldCharacter") Then
-            AddOns_Out("[SUPPLY] Trader quote unavailable after gold withdrawal for "&Supply_MatName($i)&"; stopping purchases")
-            Return 0
-        EndIf
-    EndIf
-    Local $before=Supply_Count($model)
     Supply_TraderBuy()
-    Local $wait=TimerInit()
-    Do
-        Sleep(100)
-    Until Supply_Count($model)>=$before+$GC_I_SUPPLY_TRADER_LOT Or TimerDiff($wait)>5000
-    If Supply_Count($model)<$before+$GC_I_SUPPLY_TRADER_LOT Then
-        AddOns_Out("[SUPPLY] Trader purchase of "&Supply_MatName($i)&" was not confirmed; stopping purchases")
-        Return 0
-    EndIf
-    ; Give the trader a moment to publish its replacement stock item before the next quote.
-    Sleep(400)
+    Sleep(150)
     Return $quote
 EndFunc
 ; Craft up to $count of $item at its crafter, in batches. Returns the number crafted.
+; Wait until at least $expected of $model are carried. Returns True when they are.
+Func Supply_WaitArrival($model, $expected, $timeoutMs)
+    Local $t=TimerInit()
+    While Supply_Count($model)<$expected And TimerDiff($t)<$timeoutMs
+        Sleep(50)
+    WEnd
+    Return Supply_Count($model)>=$expected
+EndFunc
 Func Supply_CraftBulk($item, $count)
     Local $model=0,$npc="",$need[5],$batch=1
     If $count<=0 Or Not Supply_Recipe($item,$model,$npc,$need,$batch) Then Return 0
@@ -652,13 +678,18 @@ Func Supply_Produce($profile)
         Local $toBuy=Ceiling(($perUnit[$i]*$units-Supply_MatOwned($i))/$GC_I_SUPPLY_TRADER_LOT)
         If $toBuy<=0 Then ContinueLoop
         AddOns_Out("[SUPPLY] Buying "&($toBuy*$GC_I_SUPPLY_TRADER_LOT)&" "&Supply_MatName($i)&" ("&$toBuy&" lots)")
+        Local $model=Supply_MatModel($i),$start=Supply_Count($model),$sent=0
         For $n=1 To $toBuy
             If AddOns_GetEmptyInventorySlotCount()<=$itemsPerUnit+1 Then
+                Supply_WaitArrival($model,$start+$sent*$GC_I_SUPPLY_TRADER_LOT,2000)
+                Local $stashedBefore=Supply_Count($model)
                 If Not Supply_StashMats($perUnit) Or Not Supply_Talk("Shad") Then
                     AddOns_Out("[SUPPLY] Stopping purchases: bags and storage are full")
                     $stopped=True
                     ExitLoop
                 EndIf
+                ; Stashed materials leave the bag count; re-base the arrival check.
+                $start-=$stashedBefore-Supply_Count($model)
             EndIf
             Local $paid=Supply_BuyLot($i,$feeReserve)
             If $paid<=0 Then
@@ -667,8 +698,17 @@ Func Supply_Produce($profile)
             EndIf
             $spent+=$paid
             $lots+=1
+            $sent+=1
+            ; Every 10 lots, make sure purchases are actually arriving.
+            If Mod($sent,10)=0 And Not Supply_WaitArrival($model,$start+($sent-3)*$GC_I_SUPPLY_TRADER_LOT,2000) Then
+                AddOns_Out("[SUPPLY] Stopping purchases: "&Supply_MatName($i)&" lots are not arriving (sent "&$sent&", received "&Floor((Supply_Count($model)-$start)/$GC_I_SUPPLY_TRADER_LOT)&")")
+                $stopped=True
+                ExitLoop
+            EndIf
         Next
+        Supply_WaitArrival($model,$start+$sent*$GC_I_SUPPLY_TRADER_LOT,3000)
     Next
+    Supply_KeepGold()
     AddOns_Out("[SUPPLY] Bought "&$lots&" lot(s) for "&$spent&"g")
 
     ; Craft what the materials actually cover (purchases may have stopped early).
