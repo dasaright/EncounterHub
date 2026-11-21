@@ -115,11 +115,20 @@ Func Supply_WalkTo($name)
     If Not Supply_NPCCoords($name,$x,$y) Then Return
     If Agent_GetDistanceToXY($x,$y)<=300 Then Return
     Supply_Approach($name,$ax,$ay)
-    ; Already in the trader corner or crafter area: those are directly connected.
-    Local $inTraderArea=Agent_GetDistanceToXY(2619,-1986)<600
-    Local $inCrafterArea=Agent_GetDistanceToXY(3550,60)<700
-    If Not $inTraderArea And Not $inCrafterArea Then AddOns_MoveTo(2000,250,"",50)
-    AddOns_MoveTo($ax,$ay,"",30)
+    ; Leave the current area through its own waypoint first (standing at an NPC,
+    ; the straight line to the next area is blocked), then go to the target area.
+    ; If that leg fails, route through the central start point and try again.
+    If Agent_GetDistanceToXY(2619,-1986)<700 Then
+        AddOns_MoveTo(2619,-1986,"",30) ; trader corner exit
+    ElseIf Agent_GetDistanceToXY(3550,60)<800 Then
+        AddOns_MoveTo(3550,60,"",30) ; crafter area exit
+    Else
+        AddOns_MoveTo(2000,250,"",50) ; central start point
+    EndIf
+    If Agent_GetDistanceToXY($ax,$ay)>200 And Not AddOns_MoveTo($ax,$ay,"",30) Then
+        AddOns_MoveTo(2000,250,"",50)
+        AddOns_MoveTo($ax,$ay,"",30)
+    EndIf
 EndFunc
 Func Supply_Talk($name)
     ; Walk near the NPC first so it is in range and loaded before searching.
