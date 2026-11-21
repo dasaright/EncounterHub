@@ -88,23 +88,59 @@ Func Supply_NPC($name)
     Next
     Return 0
 EndFunc
+; Movement packets walk in a straight line, so Embark Beach obstacles must be
+; avoided with waypoints (the same route gw-suite uses): central start point
+; (2000,250), then the trader corner (2619,-1986) or the crafter area.
+Func Supply_Approach($name, ByRef $ax, ByRef $ay)
+    Switch $name
+        Case "Shad", "Argus"
+            $ax=2619
+            $ay=-1986
+        Case "Kwat"
+            $ax=3550
+            $ay=60
+        Case "Alcus Nailbiter"
+            $ax=3605
+            $ay=-50
+        Case "Eyja"
+            $ax=3405
+            $ay=450
+        Case Else
+            Return False
+    EndSwitch
+    Return True
+EndFunc
+Func Supply_WalkTo($name)
+    Local $x=0,$y=0,$ax=0,$ay=0
+    If Not Supply_NPCCoords($name,$x,$y) Then Return
+    If Agent_GetDistanceToXY($x,$y)<=300 Then Return
+    Supply_Approach($name,$ax,$ay)
+    ; Already in the trader corner or crafter area: those are directly connected.
+    Local $inTraderArea=Agent_GetDistanceToXY(2619,-1986)<600
+    Local $inCrafterArea=Agent_GetDistanceToXY(3550,60)<700
+    If Not $inTraderArea And Not $inCrafterArea Then AddOns_MoveTo(2000,250,"",50)
+    AddOns_MoveTo($ax,$ay,"",30)
+EndFunc
 Func Supply_Talk($name)
-    Local $x=0,$y=0
     ; Walk near the NPC first so it is in range and loaded before searching.
-    If Supply_NPCCoords($name,$x,$y) And Agent_GetDistanceToXY($x,$y)>300 Then AddOns_MoveTo($x,$y,"",50)
+    Supply_WalkTo($name)
     Local $p = Supply_NPC($name)
     If $p=0 Then
         AddOns_Out("[SUPPLY] NPC not found: "&$name)
         Return False
     EndIf
+    ; Agent_GoNPC only starts the walk; keep re-sending it until the character arrives.
+    Local $timer=TimerInit(),$resend=TimerInit()
     Agent_GoNPC($p)
-    ; Agent_GoNPC only starts the walk; wait until the character actually arrives.
-    Local $timer=TimerInit()
-    While Agent_GetDistance($p)>150 And TimerDiff($timer)<15000
+    While Agent_GetDistance($p)>250 And TimerDiff($timer)<20000
         Sleep(250)
+        If TimerDiff($resend)>2000 Then
+            Agent_GoNPC($p)
+            $resend=TimerInit()
+        EndIf
     WEnd
-    If Agent_GetDistance($p)>150 Then
-        AddOns_Out("[SUPPLY] Could not reach NPC: "&$name)
+    If Agent_GetDistance($p)>250 Then
+        AddOns_Out("[SUPPLY] Could not reach NPC: "&$name&" (player at "&Round(Agent_GetAgentInfo(-2,"X"))&","&Round(Agent_GetAgentInfo(-2,"Y"))&", "&Round(Agent_GetDistance($p))&" away)")
         Return False
     EndIf
     Agent_GoNPC($p)
