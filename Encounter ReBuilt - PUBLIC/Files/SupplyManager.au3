@@ -248,8 +248,9 @@ Func Supply_BuyMats($item)
             EndIf
 
             Local $before=Supply_Count($models[$i])
-            ; Common materials are purchased in 10-unit quantities at the trader.
-            If Not Merchant_BuyItem($models[$i],$LC_I_TRADER_LOT,True) Then
+            ; One trader transaction = one 10-unit lot. (Merchant_BuyItem's quantity is a
+            ; transaction count, so passing 10 there could buy up to 100 materials.)
+            If $quote>Item_GetInventoryInfo("GoldCharacter") Or Not Supply_TraderBuy() Then
                 AddOns_Out("[SUPPLY] Trader purchase rejected for model "&$models[$i]&" (10-unit lot); quote "&$quote&"g, carried gold "&Item_GetInventoryInfo("GoldCharacter")&"g, bank gold "&Item_GetInventoryInfo("GoldStorage")&"g, free slots "&AddOns_GetEmptyInventorySlotCount()&", quote item ID "&Memory_Read($g_i_TraderCostID,"dword")&".")
                 Return False
             EndIf
@@ -263,6 +264,8 @@ Func Supply_BuyMats($item)
                 AddOns_Out("[SUPPLY] Trader purchase was not confirmed for model "&$models[$i]&"; expected +"&$LC_I_TRADER_LOT&", observed +"&($after-$before))
                 Return False
             EndIf
+            ; Give the trader a moment to publish its replacement stock item before the next quote.
+            Sleep(400)
             ; Do not deposit between lots: buying only lowers carried gold, and depositing
             ; everything left 0g carried so the next quote failed.
         Next
@@ -388,19 +391,49 @@ Func Supply_SellEctos($minimum)
     Next
     Return True
 EndFunc
+; Trader stock is not in the regular merchant item list, and the trader's item
+; changes after each purchase. Like GwAu3's Merchant_BuyItem, find the trader's
+; item in the global item array (matching model, not in a bag, not on the ground).
+; Newest IDs are tried first because older entries can be stale.
+Func Supply_TraderItemIDs($model)
+    Local $items=Item_GetItemArray()
+    Local $ids[1]=[0]
+    For $i=$items[0] To 1 Step -1
+        Local $p=$items[$i]
+        If Memory_Read($p+0x2C,"dword")<>$model Then ContinueLoop
+        If Memory_Read($p+0xC,"ptr")<>0 Then ContinueLoop ; in a player bag
+        If Memory_Read($p+0x4,"dword")<>0 Then ContinueLoop ; on the ground
+        $ids[0]+=1
+        ReDim $ids[$ids[0]+1]
+        $ids[$ids[0]]=Item_ItemID($p)
+    Next
+    Return $ids
+EndFunc
+; Returns the live price of one trader transaction (one 10-unit lot for common
+; materials) and leaves that quote active so Supply_TraderBuy() executes it.
 Func Supply_QuoteBuy($model)
-    Local $ptr=Merchant_GetMerchantItemPtr($model)
-    If $ptr=0 Then Return 0
-    Local $id=Memory_Read($ptr),$old=Memory_Read($g_i_TraderQuoteID)
-    DllStructSetData($g_d_RequestQuote,2,$id)
-    Core_Enqueue($g_p_RequestQuote,8)
-    Local $timer=TimerInit()
-    Do
-        Sleep(50)
-    Until Memory_Read($g_i_TraderQuoteID)<>$old Or TimerDiff($timer)>5000
-    If TimerDiff($timer)>5000 Then Return 0
-    If Memory_Read($g_i_TraderCostID,"dword")<>$id Then Return 0
-    Return Memory_Read($g_f_TraderCostValue,"dword")
+    Local $ids=Supply_TraderItemIDs($model)
+    For $n=1 To $ids[0]
+        If $n>3 Then ExitLoop
+        Local $id=$ids[$n],$old=Memory_Read($g_i_TraderQuoteID)
+        DllStructSetData($g_d_RequestQuote,2,$id)
+        Core_Enqueue($g_p_RequestQuote,8)
+        Local $timer=TimerInit()
+        Do
+            Sleep(50)
+        Until Memory_Read($g_i_TraderQuoteID)<>$old Or TimerDiff($timer)>5000
+        If TimerDiff($timer)>5000 Then ContinueLoop
+        If Memory_Read($g_i_TraderCostID,"dword")<>$id Then ContinueLoop
+        Local $value=Memory_Read($g_f_TraderCostValue,"dword")
+        If $value>0 Then Return $value
+    Next
+    Return 0
+EndFunc
+; Executes exactly one trader transaction for the quote currently held.
+Func Supply_TraderBuy()
+    ; Core_Enqueue has no return value; success is confirmed by the inventory count.
+    Core_Enqueue($g_p_TraderBuy,4)
+    Return True
 EndFunc
 Func Supply_ManualConsetOK()
     If Not Supply_Talk("Shad") Then Return False
