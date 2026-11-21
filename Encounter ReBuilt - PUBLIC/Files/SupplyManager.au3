@@ -532,12 +532,12 @@ Func Supply_BuyLot($i, $goldFloor)
         $quote=Supply_QuoteBuy($model)
     EndIf
     If $quote<=0 Then
-        AddOns_Out("[SUPPLY] No live trader quote for "&Supply_MatName($i)&"; stopping purchases")
+        AddOns_Out("[SUPPLY] Shad has no quote for "&Supply_MatName($i)&" (out of stock?); stopping purchases and crafting what is complete")
         Return 0
     EndIf
     ; Keep enough total gold for the remaining crafting fees.
     If Item_GetInventoryInfo("GoldCharacter")+Item_GetInventoryInfo("GoldStorage")-$quote<$goldFloor Then
-        AddOns_Out("[SUPPLY] Stopping purchases: "&Supply_MatName($i)&" now costs "&$quote&"g per 10 and the rest is reserved for crafting fees")
+        AddOns_Out("[SUPPLY] Stopping purchases: "&Supply_MatName($i)&" now costs "&$quote&"g per 10; remaining gold is kept for the "&$goldFloor&"g of crafting fees")
         Return 0
     EndIf
     If Not Supply_KeepGold($quote) Then
@@ -646,7 +646,7 @@ Func Supply_Produce($profile)
 
     ; 1. Plan from live prices and total gold.
     If Not Supply_Talk("Shad") Then Return False
-    Local $lotPrice[5]=[0,0,0,0,0],$owned[5]=[0,0,0,0,0]
+    Local $lotPrice[5]=[0,0,0,0,0],$owned[5]=[0,0,0,0,0],$outOfStock=False
     For $i=0 To 4
         If $perUnit[$i]=0 Then ContinueLoop
         $owned[$i]=Supply_MatOwned($i)
@@ -656,8 +656,10 @@ Func Supply_Produce($profile)
             $lotPrice[$i]=Supply_QuoteBuy(Supply_MatModel($i))
         EndIf
         If $lotPrice[$i]<=0 Then
-            AddOns_Out("[SUPPLY] Production skipped: no live trader price for "&Supply_MatName($i))
-            Return False
+            ; Out of stock: plan only from materials already owned (price treated as unaffordable).
+            AddOns_Out("[SUPPLY] Shad has no quote for "&Supply_MatName($i)&" (out of stock?); crafting only from materials already owned")
+            $lotPrice[$i]=1000000000
+            $outOfStock=True
         EndIf
     Next
     Local $budget=Item_GetInventoryInfo("GoldCharacter")+Item_GetInventoryInfo("GoldStorage")
@@ -665,7 +667,10 @@ Func Supply_Produce($profile)
     While $afford<$GC_I_SUPPLY_MAX_UNITS And Supply_PlanCost($afford+1,$perUnit,$owned,$lotPrice,$itemsPerUnit)<=$budget
         $afford+=1
     WEnd
+    ; Target 80% of what is affordable, so prices rising during the purchase are absorbed.
+    ; When a material is out of stock, just use everything the owned materials cover.
     Local $units=Floor($afford*$GC_F_SUPPLY_TARGET_SHARE)
+    If $outOfStock Then $units=$afford
     ; Space: free bag slots (keeping one per crafted item type plus one spare) and free storage slots.
     Local $space=AddOns_GetEmptyInventorySlotCount()-($itemsPerUnit+1)+AddOns_GetEmptyStorageSlotCount()
     Local $byGold=$units
@@ -686,62 +691,97 @@ Func Supply_Produce($profile)
         Return False
     EndIf
 
-    ; 2. Buy every lot for the whole plan in one visit, keeping the crafting fees in reserve.
-    Local $feeReserve=$GC_I_SUPPLY_CRAFT_FEE*$units*$itemsPerUnit
-    Local $spent=0,$lots=0,$stopped=False
+    ; 2. Buy in rounds of one item at a time, rotating through the profile's items
+    ;    (e.g. Celerity: dust+feathers, Grail: dust+iron, Armor: bones+iron), so the
+    ;    finished sets stay even. Before every lot the remaining gold (carried + bank)
+    ;    must still cover the 250g crafting fee for every item bought so far plus the
+    ;    one in progress. If the trader runs out of a material, buying stops and only
+    ;    the items whose materials are complete are crafted.
+    Local $owned0[5],$alloc[5],$boughtLots[5],$start[5]
     For $i=0 To 4
-        If $perUnit[$i]=0 Or $stopped Then ContinueLoop
-        Local $toBuy=Ceiling(($perUnit[$i]*$units-Supply_MatOwned($i))/$GC_I_SUPPLY_TRADER_LOT)
-        If $toBuy<=0 Then ContinueLoop
-        AddOns_Out("[SUPPLY] Buying "&($toBuy*$GC_I_SUPPLY_TRADER_LOT)&" "&Supply_MatName($i)&" ("&$toBuy&" lots)")
-        Local $model=Supply_MatModel($i),$start=Supply_Count($model),$sent=0
-        For $n=1 To $toBuy
-            If AddOns_GetEmptyInventorySlotCount()<=$itemsPerUnit+1 Then
-                Supply_WaitArrival($model,$start+$sent*$GC_I_SUPPLY_TRADER_LOT,2000)
-                Local $stashedBefore=Supply_Count($model)
-                If Not Supply_StashMats($perUnit) Or Not Supply_Talk("Shad") Then
-                    AddOns_Out("[SUPPLY] Stopping purchases: bags and storage are full")
-                    $stopped=True
-                    ExitLoop
-                EndIf
-                ; Stashed materials leave the bag count; re-base the arrival check.
-                $start-=$stashedBefore-Supply_Count($model)
-            EndIf
-            Local $paid=Supply_BuyLot($i,$feeReserve)
-            If $paid<=0 Then
-                $stopped=True
-                ExitLoop
-            EndIf
-            $spent+=$paid
-            $lots+=1
-            $sent+=1
-            ; Every 10 lots, make sure purchases are actually arriving.
-            If Mod($sent,10)=0 And Not Supply_WaitArrival($model,$start+($sent-6)*$GC_I_SUPPLY_TRADER_LOT,2000) Then
-                AddOns_Out("[SUPPLY] Stopping purchases: "&Supply_MatName($i)&" lots are not arriving (sent "&$sent&", received "&Floor((Supply_Count($model)-$start)/$GC_I_SUPPLY_TRADER_LOT)&")")
-                $stopped=True
-                ExitLoop
-            EndIf
+        $owned0[$i]=Supply_MatOwned($i)
+        $alloc[$i]=0
+        $boughtLots[$i]=0
+        $start[$i]=Supply_Count(Supply_MatModel($i))
+    Next
+    Local $done[$itemsPerUnit]
+    For $it=0 To $itemsPerUnit-1
+        $done[$it]=0
+    Next
+    Local $completed=0,$spent=0,$lots=0,$stopped=False
+    AddOns_Out("[SUPPLY] Buying materials for "&$units&" "&$profile&", one item at a time")
+    For $u=1 To $units
+        For $it=0 To $itemsPerUnit-1
+            Local $rModel=0,$rNpc="",$rNeed[5],$rBatch=1
+            Supply_Recipe($items[$it],$rModel,$rNpc,$rNeed,$rBatch)
+            For $i=0 To 4
+                If $rNeed[$i]=0 Then ContinueLoop
+                Local $required=$alloc[$i]+$rNeed[$i]-$owned0[$i]-$boughtLots[$i]*$GC_I_SUPPLY_TRADER_LOT
+                Local $lotsNow=0
+                If $required>0 Then $lotsNow=Ceiling($required/$GC_I_SUPPLY_TRADER_LOT)
+                For $n=1 To $lotsNow
+                    If AddOns_GetEmptyInventorySlotCount()<=$itemsPerUnit+1 Then
+                        Local $beforeStash[5]
+                        For $m=0 To 4
+                            $beforeStash[$m]=Supply_Count(Supply_MatModel($m))
+                        Next
+                        If Not Supply_StashMats($perUnit) Or Not Supply_Talk("Shad") Then
+                            AddOns_Out("[SUPPLY] Stopping purchases: bags and storage are full")
+                            $stopped=True
+                            ExitLoop
+                        EndIf
+                        ; Stashed materials leave the bags; re-base the arrival checks.
+                        For $m=0 To 4
+                            $start[$m]-=$beforeStash[$m]-Supply_Count(Supply_MatModel($m))
+                        Next
+                    EndIf
+                    Local $paid=Supply_BuyLot($i,$GC_I_SUPPLY_CRAFT_FEE*($completed+1))
+                    If $paid<=0 Then
+                        $stopped=True
+                        ExitLoop
+                    EndIf
+                    $boughtLots[$i]+=1
+                    $spent+=$paid
+                    $lots+=1
+                    ; Every 10 lots, make sure purchases are actually arriving.
+                    If Mod($lots,10)=0 Then
+                        For $m=0 To 4
+                            If $boughtLots[$m]=0 Then ContinueLoop
+                            If Not Supply_WaitArrival(Supply_MatModel($m),$start[$m]+($boughtLots[$m]-6)*$GC_I_SUPPLY_TRADER_LOT,2000) Then
+                                AddOns_Out("[SUPPLY] Stopping purchases: "&Supply_MatName($m)&" lots are not arriving")
+                                $stopped=True
+                                ExitLoop 2
+                            EndIf
+                        Next
+                    EndIf
+                Next
+                If $stopped Then ExitLoop
+            Next
+            If $stopped Then ExitLoop
+            ; This item's materials are complete.
+            For $i=0 To 4
+                $alloc[$i]+=$rNeed[$i]
+            Next
+            $done[$it]+=1
+            $completed+=1
         Next
-        Supply_WaitArrival($model,$start+$sent*$GC_I_SUPPLY_TRADER_LOT,3000)
+        If $stopped Then ExitLoop
+        If Mod($u,25)=0 Then AddOns_Out("[SUPPLY] Materials bought for "&$u&"/"&$units&" "&$profile)
+    Next
+    For $m=0 To 4
+        If $boughtLots[$m]>0 Then Supply_WaitArrival(Supply_MatModel($m),$start[$m]+$boughtLots[$m]*$GC_I_SUPPLY_TRADER_LOT,3000)
     Next
     Supply_KeepGold()
-    AddOns_Out("[SUPPLY] Bought "&$lots&" lot(s) for "&$spent&"g")
-
-    ; Craft what the materials actually cover (purchases may have stopped early).
-    For $i=0 To 4
-        If $perUnit[$i]=0 Then ContinueLoop
-        Local $cover=Floor(Supply_MatOwned($i)/$perUnit[$i])
-        If $cover<$units Then $units=$cover
-    Next
-    If $units<=0 Then
-        AddOns_Out("[SUPPLY] No items were crafted; not enough materials for one "&$profile)
+    AddOns_Out("[SUPPLY] Bought "&$lots&" lot(s) for "&$spent&"g; materials complete for "&$completed&" item(s)"&($stopped ? " (stopped early)" : ""))
+    If $completed=0 Then
+        AddOns_Out("[SUPPLY] No items were crafted; not enough materials for one item")
         Return False
     EndIf
 
-    ; 3. One trip per crafter.
+    ; 3. One trip per crafter, crafting exactly the items whose materials were completed.
     Local $total=0
     For $it=0 To $itemsPerUnit-1
-        $total+=Supply_CraftBulk($items[$it],$units)
+        $total+=Supply_CraftBulk($items[$it],$done[$it])
     Next
     If $total=0 Then
         AddOns_Out("[SUPPLY] No items were crafted; routine is reporting failure")
