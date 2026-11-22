@@ -795,6 +795,28 @@ Func Supply_Produce($profile)
     AddOns_Out("[SUPPLY] Production finished: "&$total&" item(s) crafted")
     Return True
 EndFunc
+; Put leftover crafting materials and crafted supplies into storage. Materials go to the
+; regular storage tabs (not material storage) so the next supply run can see and withdraw them.
+Func Supply_CleanInventory()
+    Local $models[9]=[$GC_I_MODELID_BONES,$GC_I_MODELID_PLANT_FIBRES,$GC_I_MODELID_DUST,$GC_I_MODELID_FEATHERS,$GC_I_MODELID_IRON, _
+        $GC_I_SUPPLY_RES_SCROLL,$GC_I_MODELID_ESSENCE_OF_CELERITY,$GC_I_MODELID_GRAIL_OF_MIGHT,$GC_I_MODELID_ARMOR_OF_SALVATION]
+    Local $names[9]=["bones","plant fibres","dust","feathers","iron","Res Scrolls","Essence of Celerity","Grail of Might","Armor of Salvation"]
+    Local $stored="",$left=""
+    For $i=0 To 8
+        Local $before=Supply_Count($models[$i])
+        If $before=0 Then ContinueLoop
+        AddOns_DepositItemsToStorage($models[$i],-1,-1,True,False)
+        Local $t=TimerInit()
+        While Supply_Count($models[$i])>0 And TimerDiff($t)<1500
+            Sleep(50)
+        WEnd
+        Local $after=Supply_Count($models[$i])
+        If $before>$after Then $stored&=($before-$after)&" "&$names[$i]&", "
+        If $after>0 Then $left&=$after&" "&$names[$i]&", "
+    Next
+    If $stored<>"" Then AddOns_Out("[SUPPLY] Stored in storage: "&StringTrimRight($stored,2))
+    If $left<>"" Then AddOns_Out("[SUPPLY] Could not store (storage full?): "&StringTrimRight($left,2))
+EndFunc
 Func Supply_Run($manual)
     If $g_b_SupplyBusy Then Return False
     $g_b_SupplyBusy=True
@@ -839,6 +861,8 @@ Func Supply_Run($manual)
             AddOns_Out("[SUPPLY] Automatic production skipped: bank gold "&$bank&"g is below threshold "&$threshold&"g")
         EndIf
     EndIf
+    ; Leave the bags clean before farming resumes, whether or not production succeeded.
+    Supply_CleanInventory()
     If $l_b_SupplySuccess Then
         AddOns_Out("[SUPPLY] Routine complete")
     Else
