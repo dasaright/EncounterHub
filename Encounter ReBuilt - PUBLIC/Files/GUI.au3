@@ -1199,7 +1199,11 @@ EndFunc
 ; Related........: AddOns_Out, GUI_UpdateStatistics, Inventory
 ; ===============================================================================================================================
 Func GUI_EnterPause()
-    Inventory(True)
+    If Farm_KeepsRares() Then
+        Fiber_StoreMaterials()
+    Else
+        Inventory(True)
+    EndIf
     AddOns_Out("[INFO] Bot is now paused")
 EndFunc
 
@@ -1213,7 +1217,7 @@ EndFunc
 ; ===============================================================================================================================
 Func GUI_LeavePause()
     AddOns_Out("[INFO] Bot will now resume")
-    SetupEncounter()
+    Call(Farm_SetupFunc())
 EndFunc
 
 ; #FUNCTION# ====================================================================================================================

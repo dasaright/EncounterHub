@@ -65,6 +65,10 @@ DEFAULT_CONFIG = {
     # Set when live prices arrive from a bot (see apply_market_prices).
     "market_updated": "",
     "market_source": "",
+    # Fiber farm: craft Res Scrolls once this much fiber is stored, never spending below the reserve.
+    "fiber_craft_scrolls": True,
+    "fiber_scroll_threshold": 6500,
+    "fiber_gold_reserve": 30000,
 }
 
 # Keys the bot writes to Config/market.prices.ini [Market] -> hub material keys.
@@ -102,6 +106,15 @@ def normalize_config(config=None):
     result["automatic_enabled"] = bool(result["automatic_enabled"])
     result["market_updated"] = str(result["market_updated"] or "")
     result["market_source"] = str(result["market_source"] or "")
+    result["fiber_craft_scrolls"] = bool(result["fiber_craft_scrolls"])
+    try:
+        result["fiber_scroll_threshold"] = max(25, int(result["fiber_scroll_threshold"]))
+    except (TypeError, ValueError):
+        result["fiber_scroll_threshold"] = DEFAULT_CONFIG["fiber_scroll_threshold"]
+    try:
+        result["fiber_gold_reserve"] = max(0, int(result["fiber_gold_reserve"]))
+    except (TypeError, ValueError):
+        result["fiber_gold_reserve"] = DEFAULT_CONFIG["fiber_gold_reserve"]
     return result
 
 
@@ -220,8 +233,9 @@ def may_sell_ectoplasm(current_sell_price, minimum_sell_price):
     return int(current_sell_price) > 0 and int(current_sell_price) >= int(minimum_sell_price)
 
 
-def automatic_replenishment_due(bank_gold, threshold):
-    return int(bank_gold) >= int(threshold)
+def automatic_replenishment_due(total_gold, threshold):
+    """The global Buy Cons trigger: bank + carried gold at or above the hub threshold."""
+    return int(total_gold) >= int(threshold)
 
 
 def choose_full_conset_component(stock):
@@ -258,8 +272,8 @@ if QDialog is not None:
             root = QVBoxLayout(self)
 
             intro = QLabel(
-                "Configure global replenishment thresholds and market prices here. "
-                "Choose each character's automatic and manual crafting profiles on the main Hub."
+                "Configure the global Buy Cons settings that every farm works around, plus market prices. "
+                "Choose each account's automatic and manual crafting profiles on the main Hub."
             )
             intro.setWordWrap(True)
             root.addWidget(intro)
@@ -278,10 +292,29 @@ if QDialog is not None:
             self.auto_enabled.addItem("Disabled", False)
             self.auto_enabled.addItem("Enabled", True)
             self.auto_enabled.setCurrentIndex(1 if self.config["automatic_enabled"] else 0)
-            form.addRow("Bank gold trigger", self.bank_threshold)
+            form.addRow("Gold trigger (bank + carried)", self.bank_threshold)
             form.addRow("Minimum ectoplasm sale price", self.min_ecto)
             form.addRow("Automatic replenishment", self.auto_enabled)
             root.addWidget(settings_box)
+
+            fiber_box = QGroupBox("Fiber farm")
+            fiber_form = QFormLayout(fiber_box)
+            self.fiber_enabled = QComboBox()
+            self.fiber_enabled.addItem("Disabled", False)
+            self.fiber_enabled.addItem("Enabled", True)
+            self.fiber_enabled.setCurrentIndex(1 if self.config["fiber_craft_scrolls"] else 0)
+            self.fiber_threshold = QSpinBox()
+            self.fiber_threshold.setRange(25, 1_000_000)
+            self.fiber_threshold.setGroupSeparatorShown(True)
+            self.fiber_threshold.setValue(self.config["fiber_scroll_threshold"])
+            self.fiber_reserve = QSpinBox()
+            self.fiber_reserve.setRange(0, 2_000_000_000)
+            self.fiber_reserve.setGroupSeparatorShown(True)
+            self.fiber_reserve.setValue(self.config["fiber_gold_reserve"])
+            fiber_form.addRow("Craft Res Scrolls", self.fiber_enabled)
+            fiber_form.addRow("Craft when stored fiber reaches", self.fiber_threshold)
+            fiber_form.addRow("Gold kept in reserve", self.fiber_reserve)
+            root.addWidget(fiber_box)
 
             market_box = QGroupBox("Market prices")
             market = QFormLayout(market_box)
@@ -330,8 +363,9 @@ if QDialog is not None:
             root.addWidget(costs_box)
 
             self.status = QLabel(
-                "Automatic replenishment checks bank gold after each completed run when enabled. "
-                "Use the per-character Buy Cons button on the main Hub while that character is paused."
+                "When enabled, every farm checks bank + carried gold after each run; at the trigger it pauses, "
+                "runs the account's Automatically Craft profile until the gold is spent, then resumes. "
+                "Fiber farms also craft Res Scrolls when their fiber reaches the threshold above."
             )
             self.status.setWordWrap(True)
             root.addWidget(self.status)
@@ -363,6 +397,9 @@ if QDialog is not None:
                 },
                 "market_updated": self.config["market_updated"],
                 "market_source": self.config["market_source"],
+                "fiber_craft_scrolls": self.fiber_enabled.currentData(),
+                "fiber_scroll_threshold": self.fiber_threshold.value(),
+                "fiber_gold_reserve": self.fiber_reserve.value(),
             })
 
         def refresh_costs(self, *_):

@@ -2095,6 +2095,9 @@ Func CreatePickupSet()
         Next
     EndIf
 
+    If Farm_IsFiber() Then Fiber_AddPickups($l_m_PickUpSet)
+    If Farm_IsVaettir() Then Vaettir_AddPickups($l_m_PickUpSet)
+
     Return $l_m_PickUpSet
 EndFunc
 
@@ -2138,6 +2141,11 @@ Func CanPickUp($a_p_Item, $a_m_PickUpSet)
 
 	If $l_i_Rarity = $GC_I_RARITY_GOLD Then
 		Return SetExtended($GC_I_STATISTICS_TRACKER_GOLDEN_ITEM, True)
+	EndIf
+
+	; Fiber farm: weapons of the salvageable types are picked up for materials (Fiber_AddPickups marks the set).
+	If MapExists($a_m_PickUpSet, "fiber") And Fiber_IsSalvageWeaponType(Memory_Read($a_p_Item + 0x20, "byte")) Then
+		Return SetExtended($GC_I_STATISTICS_TRACKER_NONE, True)
 	EndIf
 
 	If MapExists($a_m_PickUpSet, $l_i_ModelID) Then
@@ -3650,7 +3658,7 @@ Func RestartGW()
 		GUI_SetBotState($GC_I_BOTSTATE_RUN)
 
 		AddOns_Out("[INFO] Preparing party setup")
-		HeartbeatStep("SetupEncounter", "SetupEncounter")
+		HeartbeatStep(Farm_SetupFunc(), Farm_SetupFunc())
     Else
 		Local $l_i_Err = @error
 		$s_i_RestartAttempts += 1
@@ -3700,7 +3708,7 @@ Func Main()
     WEnd
 
 	AddOns_Out("[INFO] Preparing party setup")
-    HeartbeatStep("SetupEncounter", "SetupEncounter")
+    HeartbeatStep(Farm_SetupFunc(), Farm_SetupFunc())
 	If $g_b_ForcePauseRequested Then
 	    $g_b_ForcePauseRequested = False
 	    $g_b_PauseRequested = False
@@ -3732,7 +3740,14 @@ Func Main()
 
         Switch GUI_GetBotState()
 			Case $GC_I_BOTSTATE_RUN
-				Quest18()
+				Switch Farm_Name()
+					Case "Fiber"
+						Fiber_Main()
+					Case "Vaettir"
+						Vaettir_Main()
+					Case Else
+						Quest18()
+				EndSwitch
                 ; Manual supply requests outrank normal pause handling and automatic supply checks.
                 If Supply_CheckManualRequest() Then
                     $g_b_ForcePauseRequested=False
