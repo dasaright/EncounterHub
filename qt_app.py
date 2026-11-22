@@ -7,12 +7,13 @@ from pathlib import Path
 import queue
 import subprocess
 import sys
+import re
 import threading
 import time
 from PySide6.QtCore import Qt, QTimer, QSignalBlocker, QByteArray, QBuffer, QIODevice
 from PySide6.QtGui import QIcon, QPixmap, QImageReader, QAction
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,
-    QCheckBox,QComboBox,QTableWidget,QTableWidgetItem,QHeaderView,QAbstractItemView,QFileDialog,QMessageBox)
+    QCheckBox,QComboBox,QTableWidget,QTableWidgetItem,QHeaderView,QAbstractItemView,QFileDialog,QMessageBox,QLineEdit)
 import app_main as engine
 from supervisor import ensure, RemoteProcess, command_line
 from supply_manager import SupplyDialog, normalize_config, PROFILES, MARKET_FILE, read_market_prices, apply_market_prices
@@ -1896,8 +1897,66 @@ End Sub
     except (OSError,subprocess.TimeoutExpired):pass
 
 
-COLUMNS=('check','character','status','command','render','ontop','pause','resume','trade','stop','launch','buycons','automatic','manual','storage')
-CAPTIONS=('Select','Character','Bot Status','Command','Disable Rendering','Always on Top','Pause','Resume','Trade','Stop','Launch','Buy Cons','Automatically Craft','Manually Craft','Put in Storage')
+COLUMNS=('check','account','character','farm','status','command','render','ontop','pause','resume','trade','stop','launch','buycons','automatic','manual','storage')
+CAPTIONS=('Select','Account','Character','Farm','Bot Status','Command','Disable Rendering','Always on Top','Pause','Resume','Trade','Stop','Launch','Buy Cons','Automatically Craft','Manually Craft','Put in Storage')
+FLEXIBLE=('character','status','command')
+# Farm routines the bot can run. The bot reads each character's farm from Config\farms.ini.
+FARMS=('Ministerial','Fiber')
+CHARACTER_NAME=re.compile(r"[A-Za-z][A-Za-z ']{1,17}[A-Za-z]")
+INI_HEADER=re.compile(r'^\s*\[([^\]\r\n]+)\]\s*$')
+
+
+def read_ini_text(path):
+    """Return (text, encoding) for an INI the AutoIt bot may have written as UTF-16 or UTF-8."""
+    raw=Path(path).read_bytes()
+    if raw.startswith((b'\xff\xfe',b'\xfe\xff')):return raw.decode('utf-16'),'utf-16'
+    return raw.decode('utf-8-sig',errors='replace'),('utf-8-sig' if raw.startswith(b'\xef\xbb\xbf') else 'utf-8')
+
+
+def parse_characters(text):
+    """{section: {lower-case key: value}} for characters.ini."""
+    sections={};current=None
+    for line in text.splitlines():
+        header=INI_HEADER.match(line)
+        if header:current=header.group(1);sections.setdefault(current,{});continue
+        if current is not None and '=' in line:
+            key,value=line.split('=',1);sections[current][key.strip().lower()]=value.strip()
+    return sections
+
+
+def account_key(email,name):
+    """Stable row key: one row per Guild Wars account (characters sharing a login email)."""
+    import hashlib
+    email=(email or '').strip().lower()
+    return 'account-'+hashlib.sha1(email.encode('utf-8')).hexdigest()[:12] if email else name
+
+
+def group_accounts(sections):
+    """[(account key, [character names])], characters sorted by name."""
+    groups={}
+    for name in sorted(sections):
+        groups.setdefault(account_key(sections[name].get('email'),name),[]).append(name)
+    return list(groups.items())
+
+
+def clone_character_section(path,source,name):
+    """Add [name] to characters.ini with the login lines of [source] (same account), keeping the encoding."""
+    text,encoding=read_ini_text(path)
+    sections=parse_characters(text)
+    if name in sections:return False
+    if source not in sections:raise ValueError(source+' is not in characters.ini')
+    body=[];inside=False
+    for line in text.splitlines():
+        header=INI_HEADER.match(line)
+        if header:inside=header.group(1)==source;continue
+        if inside and line.strip():body.append(line)
+    newline='\r\n'
+    lead='' if not text or text.endswith(('\n','\r')) else newline
+    text=text+lead+'['+name+']'+newline+newline.join(body)+newline
+    temporary=Path(str(path)+'.tmp')
+    temporary.write_bytes(text.encode(encoding))
+    os.replace(temporary,path)
+    return True
 
 class QtDialogs:
     @staticmethod
@@ -1975,7 +2034,7 @@ class Desktop(QMainWindow):
         self.resizing_columns=False
         saved=self.settings.get('column_widths',{})
         self.custom_columns=bool(saved)
-        defaults=(60,220,210,245,150,140,82,82,82,82,82,105,155,145,125)
+        defaults=(60,120,200,125,210,245,150,140,82,82,82,82,82,105,155,145,125)
         self.resizing_columns=True
         for index,key in enumerate(COLUMNS):
             width=saved.get(key,defaults[index]) if isinstance(saved,dict) else defaults[index]
@@ -1986,7 +2045,7 @@ class Desktop(QMainWindow):
         fit=QPushButton('Fit Columns');fit.clicked.connect(self.fit_columns);toolbar.insertWidget(3,fit)
         if not self.custom_columns:QTimer.singleShot(0,self.auto_fit)
         footer=QHBoxLayout();outer.addLayout(footer)
-        for text,callback in [('Launch Selected',self.launch),('Pause Selected',lambda:self.command('Pause')),('Resume Selected',lambda:self.command('Resume')),('Stop Selected',self.stop),('Trade Mode',lambda:self.command('Trade Mode')),('Open Lockboxes',lambda:self.command('Open Lockboxes')),('Show Selected',self.show_bots)]:
+        for text,callback in [('Launch Selected',self.launch),('Pause Selected',lambda:self.command('Pause')),('Resume Selected',lambda:self.command('Resume')),('Stop Selected',self.stop),('Trade Mode',lambda:self.command('Trade Mode')),('Open Lockboxes',lambda:self.command('Open Lockboxes')),('Show Selected',lambda:self.show_bots())]:
             button=QPushButton(text);button.clicked.connect(callback);footer.addWidget(button)
         footer.addStretch()
         self.notice=QLabel(status);self.notice.setWordWrap(True);outer.addWidget(self.notice)
@@ -2019,7 +2078,7 @@ class Desktop(QMainWindow):
         record[mode]=profile
         self.save()
         self.write_supply_ini()
-        self.notice.setText(name+' — '+('Automatically Craft' if mode=='automatic_profile' else 'Manually Craft')+': '+profile)
+        self.notice.setText(self.account_label(name)+' — '+('Automatically Craft' if mode=='automatic_profile' else 'Manually Craft')+': '+profile)
 
     def write_supply_ini(self):
         import configparser
@@ -2028,10 +2087,16 @@ class Desktop(QMainWindow):
         ini['Supply']={'AutomaticEnabled':str(cfg['automatic_enabled']).lower(),
             'BankGoldThreshold':str(cfg['bank_gold_threshold']),
             'MinimumEctoSellPrice':str(cfg['minimum_ecto_sell_price'])}
-        for character,profiles in self.account_supply_profiles.items():
-            ini['Character:'+character]={
-                'AutomaticProfile':profiles.get('automatic_profile') if profiles.get('automatic_profile') in PROFILES else 'Full Conset',
-                'ManualProfile':profiles.get('manual_profile') if profiles.get('manual_profile') in PROFILES else 'Full Conset'}
+        ini['Fiber']={'CraftScrolls':str(cfg['fiber_craft_scrolls']).lower(),
+            'Threshold':str(cfg['fiber_scroll_threshold']),
+            'GoldReserve':str(cfg['fiber_gold_reserve'])}
+        # Profiles are chosen per account; the bot looks them up by the logged-in character.
+        for key,names in getattr(self,'account_characters',{}).items():
+            profiles=self.account_supply_profiles.get(key,{})
+            for character in names:
+                ini['Character:'+character]={
+                    'AutomaticProfile':profiles.get('automatic_profile') if profiles.get('automatic_profile') in PROFILES else 'Full Conset',
+                    'ManualProfile':profiles.get('manual_profile') if profiles.get('manual_profile') in PROFILES else 'Full Conset'}
         folder=self.supply_config_folder()
         temp=folder/'supply.ini.tmp'
         with temp.open('w',encoding='utf-8') as handle:ini.write(handle)
@@ -2045,21 +2110,21 @@ class Desktop(QMainWindow):
     def request_supply_purchase(self,name):
         session=self.sessions.get(name)
         if not session or session['stopping'] or session['process'].poll() is not None:
-            self.notice.setText('Launch '+name+' before using Buy Cons.')
+            self.notice.setText('Launch '+self.account_label(name)+' before using Buy Cons.')
             return
         folder=self.supply_config_folder()
-        key=self.supply_file_key(name)
+        key=self.supply_file_key(self.session_character(name))
         request=folder/('supply.manual.'+key+'.request')
         running=folder/('supply.manual.'+key+'.running')
         if request.exists() or running.exists():
-            self.notice.setText('A Buy Cons request is already pending for '+name+'.')
+            self.notice.setText('A Buy Cons request is already pending for '+self.account_label(name)+'.')
             return
         temporary=request.with_suffix(request.suffix+'.tmp')
         temporary.write_text('manual',encoding='ascii')
         os.replace(temporary,request)
         self.buy_cons_pending.add(name)
         self.update_buycons_button(name)
-        self.notice.setText('Buy Cons priority request sent for '+name+'. The bot will interrupt at its next safe checkpoint and travel to Embark.')
+        self.notice.setText('Buy Cons priority request sent for '+self.session_character(name)+'. The bot will interrupt at its next safe checkpoint and travel to Embark.')
 
     def update_buycons_button(self,name):
         widgets=self.row_widgets.get(name,{})
@@ -2070,10 +2135,16 @@ class Desktop(QMainWindow):
         enabled=active and name not in self.buy_cons_pending
         button.setEnabled(enabled)
         button.setText('Queued' if name in self.buy_cons_pending else 'Buy Cons')
+        # The farm and its character are fixed while that account's bot is running.
+        for key in ('farm','character'):
+            if key in widgets:widgets[key].setEnabled(not active)
 
     def minimum_column(self,index):
-        if COLUMNS[index] in ('character','status','command'):return 100
+        if COLUMNS[index]=='character':return 150
+        if COLUMNS[index] in ('status','command'):return 100
         if COLUMNS[index] in ('automatic','manual'):return 145
+        if COLUMNS[index]=='account':return 110
+        if COLUMNS[index]=='farm':return 120
         return max(60,self.fontMetrics().horizontalAdvance(CAPTIONS[index])+24)
 
     def column_resized(self,index,old,width):
@@ -2089,10 +2160,11 @@ class Desktop(QMainWindow):
         # Explicit reset. Normal window resizing never overrides custom widths.
         self.custom_columns=False
         available=self.table.viewport().width()
-        fixed={i:max(self.minimum_column(i),82 if COLUMNS[i] in ('pause','resume','trade','stop','launch') else self.minimum_column(i)) for i in range(len(COLUMNS)) if COLUMNS[i] not in ('character','status','command')}
-        remainder=max(300,available-sum(fixed.values()))
-        flexible={1:max(100,round(remainder*.32)),2:max(100,round(remainder*.30))}
-        flexible[3]=max(100,remainder-flexible[1]-flexible[2])
+        fixed={i:max(self.minimum_column(i),82 if COLUMNS[i] in ('pause','resume','trade','stop','launch') else self.minimum_column(i)) for i in range(len(COLUMNS)) if COLUMNS[i] not in FLEXIBLE}
+        remainder=max(350,available-sum(fixed.values()))
+        character,status,command=(COLUMNS.index(key) for key in FLEXIBLE)
+        flexible={character:max(150,round(remainder*.32)),status:max(100,round(remainder*.30))}
+        flexible[command]=max(100,remainder-flexible[character]-flexible[status])
         self.resizing_columns=True
         for index,width in {**fixed,**flexible}.items():self.table.setColumnWidth(index,width)
         self.resizing_columns=False
@@ -2106,22 +2178,148 @@ class Desktop(QMainWindow):
         super().resizeEvent(event)
         if hasattr(self,'table') and not self.custom_columns:QTimer.singleShot(0,self.auto_fit)
 
+    def characters_ini(self):
+        return self.exe.parent/'Config'/'characters.ini'
+
+    def account_record(self,key):
+        record=self.settings.setdefault('accounts',{}).setdefault(key,{})
+        if record.get('farm') not in FARMS:record['farm']='Ministerial'
+        if not isinstance(record.get('characters'),dict):record['characters']={}
+        return record
+
+    def account_label(self,key):
+        return self.settings.get('accounts',{}).get(key,{}).get('label') or key
+
+    def row_character(self,key,farm=None):
+        """The character this account plays for its selected (or the given) farm; '' if none is chosen."""
+        record=self.account_record(key)
+        return record['characters'].get(farm or record['farm'],'')
+
+    def session_character(self,key):
+        session=self.sessions.get(key)
+        return (session or {}).get('character') or self.row_character(key) or key
+
+    def account_for_character(self,character):
+        for key,names in self.account_characters.items():
+            if character in names:return key
+        return None
+
     def load_names(self):
-        import re
-        try:
-            raw=(self.exe.parent/'Config'/'characters.ini').read_bytes()
-            text=raw.decode('utf-16') if raw.startswith((b'\xff\xfe',b'\xfe\xff')) else raw.decode('utf-8-sig',errors='replace')
-            names=sorted(set(re.findall(r'^\s*\[([^\]\r\n]+)\]\s*$',text,re.M)))
-        except OSError:names=[]
+        try:sections=parse_characters(read_ini_text(self.characters_ini())[0])
+        except OSError:sections={}
+        groups=group_accounts(sections)
+        self.account_characters={key:list(names) for key,names in groups}
         self.table.setRowCount(0);self.rows.clear();self.row_widgets.clear()
-        for name in names:self.add_row(name)
-        self.write_supply_ini()
+        changed=False
+        for index,(key,names) in enumerate(groups):
+            record=self.account_record(key)
+            if not record.get('label'):record['label']='Account '+str(index+1);changed=True
+            # Default Ministerial character: the one that already had per-character settings (rows
+            # used to be characters), otherwise the first character not assigned to another farm.
+            if not record['characters'].get('Ministerial') and names:
+                assigned=set(record['characters'].values())
+                free=[n for n in names if n not in assigned] or names
+                record['characters']['Ministerial']=next((n for n in free if n in self.account_supply_profiles),free[0]);changed=True
+            # Migrate per-character settings from versions that had one row per character.
+            if key not in self.account_supply_profiles:
+                legacy=next((self.account_supply_profiles[n] for n in names if n in self.account_supply_profiles),None)
+                if legacy:self.account_supply_profiles[key]=dict(legacy);changed=True
+            if key not in self.checked and any(n in self.checked for n in names):self.checked.add(key);changed=True
+        valid=set(self.account_characters)
+        if not self.checked<=valid:self.checked&=valid;changed=True
+        for key,_ in groups:self.add_row(key)
+        if changed:self.save()
+        self.write_supply_ini();self.write_farms_ini()
+
+    def write_farms_ini(self):
+        """Config\farms.ini [Farms] character=farm; the bot reads it to choose its routine."""
+        import configparser
+        ini=configparser.ConfigParser(interpolation=None);ini.optionxform=str
+        farms={}
+        for key in self.account_characters:
+            record=self.account_record(key)
+            for farm,character in record['characters'].items():
+                if character and farm in FARMS and farm!=record['farm']:farms[character]=farm
+            # The selected farm wins when one character is assigned to two farms.
+            if record['characters'].get(record['farm']):farms[record['characters'][record['farm']]]=record['farm']
+        ini['Farms']=farms
+        folder=self.supply_config_folder()
+        temp=folder/'farms.ini.tmp'
+        with temp.open('w',encoding='utf-8') as handle:ini.write(handle)
+        os.replace(temp,folder/'farms.ini')
+
+    def fill_character_combo(self,key,combo=None):
+        combo=combo or self.row_widgets.get(key,{}).get('character')
+        if combo is None:return
+        record=self.account_record(key)
+        with QSignalBlocker(combo):
+            combo.clear();combo.addItems(self.account_characters.get(key,[]))
+            combo.setCurrentText(self.row_character(key))
+            combo.lineEdit().setPlaceholderText('Type the '+record['farm']+' character')
+
+    def rename_account(self,key,text):
+        text=text.strip()
+        record=self.account_record(key)
+        if not text:
+            widget=self.row_widgets.get(key,{}).get('account')
+            if widget:widget.setText(record.get('label',''))
+            return
+        if text!=record.get('label'):record['label']=text;self.save()
+
+    def change_farm(self,key,farm):
+        record=self.account_record(key)
+        session=self.sessions.get(key)
+        if session and not session['stopping'] and session['process'].poll() is None:
+            with QSignalBlocker(self.row_widgets[key]['farm']):self.row_widgets[key]['farm'].setCurrentText(record['farm'])
+            self.notice.setText('Stop '+self.account_label(key)+' before changing its farm.');return
+        if farm not in FARMS or farm==record['farm']:return
+        record['farm']=farm;self.save();self.fill_character_combo(key);self.write_farms_ini()
+        character=self.row_character(key)
+        self.notice.setText(self.account_label(key)+' — Farm: '+farm+('; character '+character if character else '; type or pick the character to play'))
+
+    def choose_character(self,key,text=None):
+        if getattr(self,'choosing_character',False):return
+        combo=self.row_widgets.get(key,{}).get('character')
+        if combo is None:return
+        text=(combo.currentText() if text is None else text).strip()
+        record=self.account_record(key);farm=record['farm']
+        if not text or text==self.row_character(key):return
+        self.choosing_character=True
+        try:
+            names=self.account_characters.setdefault(key,[])
+            if text not in names:
+                if not CHARACTER_NAME.fullmatch(text):
+                    self.notice.setText('"'+text+'" is not a valid Guild Wars character name.');self.fill_character_combo(key);return
+                if not names:
+                    self.notice.setText('This account has no characters.ini entry to copy the login from.');self.fill_character_combo(key);return
+                if not QtDialogs.askyesno('Add character','Add "'+text+'" to characters.ini? It logs in with the same account details as '+names[0]+'.'):
+                    self.fill_character_combo(key);return
+                try:clone_character_section(self.characters_ini(),names[0],text)
+                except (OSError,ValueError) as exc:
+                    self.notice.setText('Could not add '+text+': '+str(exc));self.fill_character_combo(key);return
+                names.append(text);names.sort()
+            record['characters'][farm]=text
+            self.save();self.fill_character_combo(key);self.write_supply_ini();self.write_farms_ini()
+            self.notice.setText(self.account_label(key)+' — '+farm+' character: '+text)
+        finally:self.choosing_character=False
 
     def add_row(self,name):
         if name in self.rows:return
         row=self.table.rowCount();self.table.insertRow(row);self.rows[name]=row
-        self.tree.set(name,'character',name);self.tree.set(name,'status','Ready');self.tree.set(name,'storage','—')
+        self.tree.set(name,'status','Ready');self.tree.set(name,'storage','—')
+        record=self.account_record(name)
         widgets={}
+        account=QLineEdit(record.get('label') or name);account.setFrame(False);account.setToolTip('Account name (click to rename)')
+        account.editingFinished.connect(lambda k=name,w=account:self.rename_account(k,w.text()))
+        self.table.setCellWidget(row,COLUMNS.index('account'),account);widgets['account']=account
+        character=QComboBox();character.setEditable(True);character.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        character.setToolTip('Character played for the selected farm. Type a new name to add it to this account.')
+        character.textActivated.connect(lambda text,k=name:self.choose_character(k,text))
+        character.lineEdit().editingFinished.connect(lambda k=name:self.choose_character(k))
+        self.table.setCellWidget(row,COLUMNS.index('character'),character);widgets['character']=character
+        farm=QComboBox();farm.addItems(FARMS);farm.setCurrentText(record['farm'])
+        farm.currentTextChanged.connect(lambda value,k=name:self.change_farm(k,value))
+        self.table.setCellWidget(row,COLUMNS.index('farm'),farm);widgets['farm']=farm
         for key in ('check','render','ontop'):
             checkbox=QCheckBox();holder=QWidget();layout=QHBoxLayout(holder);layout.setContentsMargins(4,0,4,0);layout.setAlignment(Qt.AlignmentFlag.AlignCenter);layout.addWidget(checkbox)
             self.table.setCellWidget(row,COLUMNS.index(key),holder);widgets[key]=checkbox
@@ -2137,6 +2335,7 @@ class Desktop(QMainWindow):
             combo.currentTextChanged.connect(lambda value,n=name,k=setting:self.save_account_profile(n,k,value))
             self.table.setCellWidget(row,COLUMNS.index(key),combo);widgets[key]=combo
         self.row_widgets[name]=widgets
+        self.fill_character_combo(name,character)
         self.update_buycons_button(name)
 
     def row_action(self,name,key):
@@ -2170,14 +2369,22 @@ class Desktop(QMainWindow):
         filename,_=QFileDialog.getOpenFileName(self,'Select Encounter_ReBuilt.exe',str(self.exe.parent),'Encounter bot (Encounter_ReBuilt.exe)')
         if filename:self.exe=Path(filename);self.path_label.setText(filename);self.sessions.clear();self.load_names();self.save();self.reconnect()
 
-    def session(self,process,phase='select'):
-        return dict(process=process,phase=phase,deadline=time.monotonic()+90,pending=None,command_deadline=0,sent_at=0,window=None,controls=None,next_games=0,stopping=False,stop_phase=None,options={},option_requests={},next_options=0,minimize_on_start=phase=='select',minimized=False)
+    def session(self,process,phase='select',character=None):
+        return dict(process=process,phase=phase,character=character,deadline=time.monotonic()+90,pending=None,command_deadline=0,sent_at=0,window=None,controls=None,next_games=0,stopping=False,stop_phase=None,options={},option_requests={},next_options=0,minimize_on_start=phase=='select',minimized=False)
 
     def reconnect(self):
         for record in self.broker.call('snapshot'):
             if not record['active'] or os.path.normcase(record['exe'])!=os.path.normcase(str(self.exe.resolve())):continue
-            name=record['character'];self.add_row(name)
-            self.sessions[name]=self.session(RemoteProcess(self.broker,record['identifier'],record['pid']),'wait')
+            character=record['character'];name=self.account_for_character(character)
+            if name is None:name=character;self.account_characters[name]=[character];self.add_row(name)
+            account=self.account_record(name)
+            # Show the farm the running character was launched for.
+            for farm,assigned in account['characters'].items():
+                if assigned==character and farm!=account['farm']:
+                    account['farm']=farm
+                    with QSignalBlocker(self.row_widgets[name]['farm']):self.row_widgets[name]['farm'].setCurrentText(farm)
+                    self.fill_character_combo(name)
+            self.sessions[name]=self.session(RemoteProcess(self.broker,record['identifier'],record['pid']),'wait',character)
             self.sessions[name]['deadline']=time.monotonic()+300
             self.update_buycons_button(name)
             self.tree.set(name,'status','Reconnected to active owned session');self.tree.set(name,'pid',record['pid'])
@@ -2189,9 +2396,13 @@ class Desktop(QMainWindow):
             self.paused_accounts.discard(name);self.update_buycons_button(name)
             s=self.sessions.get(name)
             if s and (s['stopping'] or s['process'].members()):continue
+            farm=self.account_record(name)['farm'];character=self.row_character(name)
+            if not character:self.tree.set(name,'status','Choose the '+farm+' character first');continue
+            if character not in self.account_characters.get(name,[]):self.tree.set(name,'status',character+' is not in characters.ini');continue
             try:
-                record=self.broker.call('launch',exe=str(self.exe.resolve()),character=name)
-                self.sessions[name]=self.session(RemoteProcess(self.broker,record['identifier'],record['pid']))
+                self.write_farms_ini()
+                record=self.broker.call('launch',exe=str(self.exe.resolve()),character=character)
+                self.sessions[name]=self.session(RemoteProcess(self.broker,record['identifier'],record['pid']),'select',character)
                 self.update_buycons_button(name)
                 self.tree.set(name,'status','Opening bot...');self.tree.set(name,'storage','—');self.tree.set(name,'command','');self.tree.set(name,'pid',record['pid'])
             except OSError as exc:self.tree.set(name,'status',str(exc))
@@ -2247,11 +2458,11 @@ class Desktop(QMainWindow):
                         self.update_buycons_button(name)
         except queue.Empty:pass
         for name in tuple(self.buy_cons_pending):
-            key=self.supply_file_key(name);folder=self.exe.parent/'Config'
+            key=self.supply_file_key(self.session_character(name));folder=self.exe.parent/'Config'
             if not (folder/('supply.manual.'+key+'.request')).exists() and not (folder/('supply.manual.'+key+'.running')).exists():
                 self.buy_cons_pending.discard(name)
                 self.update_buycons_button(name)
-                self.notice.setText('Manual supply routine finished for '+name+'.')
+                self.notice.setText('Manual supply routine finished for '+self.session_character(name)+'.')
         try:
             while True:
                 kind,value=self.events.get_nowait()
@@ -2276,7 +2487,7 @@ class Desktop(QMainWindow):
                 required={'app_main.py','hub.py','Launch Hub.vbs','Launch Hub.cmd','update.json','bot/Encounter ReBuilt/Encounter_ReBuilt.au3','bot/Encounter ReBuilt/Encounter_ReBuilt.exe'}
                 allowed=required|{'qt_app.py','qt_style.py','supervisor.py','supply_manager.py','requirements.txt','bundle.json','desktop-bundle.json','taco.ico',
                     'bot/Encounter ReBuilt/Files/AddOns.au3','bot/Encounter ReBuilt/Files/GUI.au3','bot/Encounter ReBuilt/Files/ItemFilter.au3','bot/Encounter ReBuilt/Files/Launch.au3',
-                    'bot/Encounter ReBuilt/Files/Pathing.au3','bot/Encounter ReBuilt/Files/Security.au3','bot/Encounter ReBuilt/Files/SupplyManager.au3','bot/Encounter ReBuilt/Files/_Includes.au3',
+                    'bot/Encounter ReBuilt/Files/Pathing.au3','bot/Encounter ReBuilt/Files/Security.au3','bot/Encounter ReBuilt/Files/SupplyManager.au3','bot/Encounter ReBuilt/Files/_Includes.au3','bot/Encounter ReBuilt/Files/FiberFarm.au3',
                     'bot/Encounter ReBuilt/Images/BannerGeneral.jpg','bot/Encounter ReBuilt/Images/BannerLootConfig.jpg','bot/Encounter ReBuilt/Images/BannerTradeConfig.jpg','bot/Encounter ReBuilt/Images/Encounter.ico'}
                 if manifest.get('format')!=1 or not required.issubset(manifest.get('files',{})) or not set(manifest.get('files',{})).issubset(allowed):
                     raise ValueError('GitHub returned an unsupported desktop update manifest')

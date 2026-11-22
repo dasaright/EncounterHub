@@ -936,7 +936,7 @@ Func Supply_Run($manual)
     $g_b_SupplyBusy=True
     Local $oldState=$g_i_BotState
     Local $l_b_SupplySuccess=True
-    ; Skip normal pause cleanup; the next Quest18 run will travel back to Kaineng.
+    ; Skip normal pause cleanup; the next farm run (Quest18 or Fiber_Main) travels back to its outpost.
     $g_i_BotState=$GC_I_BOTSTATE_IDLE
     AddOns_Out("[SUPPLY] Travelling to Embark Beach (American district)")
     If Not Map_TravelTo($GC_I_SUPPLY_EMBARK,0,0,0,True) Then
@@ -965,14 +965,15 @@ Func Supply_Run($manual)
             AddOns_Out("[SUPPLY] Routine stopped: Full Conset price check failed or required NPC was unavailable")
         EndIf
     Else
-        Local $threshold=Number(IniRead(Supply_ConfigPath(),"Supply","BankGoldThreshold","800000"))
-        Local $bank=Item_GetInventoryInfo("GoldStorage")
-        If $bank>=$threshold Then
+        Local $threshold=Supply_GoldThreshold()
+        Local $total=Supply_TotalGold()
+        If $total>=$threshold Then
+            AddOns_Out("[SUPPLY] Gold "&$total&"g (bank + carried) reached the "&$threshold&"g trigger; running "&$profile)
             Supply_KeepGold()
             If Not Supply_Produce($profile) Then $l_b_SupplySuccess=False
         Else
             $l_b_SupplySuccess=False
-            AddOns_Out("[SUPPLY] Automatic production skipped: bank gold "&$bank&"g is below threshold "&$threshold&"g")
+            AddOns_Out("[SUPPLY] Automatic production skipped: gold "&$total&"g (bank + carried) is below threshold "&$threshold&"g")
         EndIf
     EndIf
     ; Leave the bags clean before farming resumes, whether or not production succeeded.
@@ -1000,5 +1001,12 @@ Func Supply_CheckRequests()
     If $g_b_SupplyBusy Then Return
     If Supply_CheckManualRequest() Then Return
     If StringLower(IniRead(Supply_ConfigPath(),"Supply","AutomaticEnabled","false"))="true" _
-    And Item_GetInventoryInfo("GoldStorage")>=Number(IniRead(Supply_ConfigPath(),"Supply","BankGoldThreshold","800000")) Then Supply_Run(False)
+    And Supply_TotalGold()>=Supply_GoldThreshold() Then Supply_Run(False)
+EndFunc
+; The global Buy Cons trigger compares bank + carried gold with the hub's gold threshold.
+Func Supply_TotalGold()
+    Return Item_GetInventoryInfo("GoldCharacter")+Item_GetInventoryInfo("GoldStorage")
+EndFunc
+Func Supply_GoldThreshold()
+    Return Number(IniRead(Supply_ConfigPath(),"Supply","BankGoldThreshold","800000"))
 EndFunc

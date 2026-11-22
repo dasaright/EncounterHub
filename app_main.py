@@ -13,7 +13,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-VERSION = "2.2.1"
+VERSION = "2.3.0"
 
 
 def command_action(command, buttons):
@@ -63,7 +63,7 @@ def update_bundle(root=None, commit=None):
       'bot/Encounter ReBuilt/Files/AddOns.au3','bot/Encounter ReBuilt/Files/GUI.au3',
       'bot/Encounter ReBuilt/Files/ItemFilter.au3','bot/Encounter ReBuilt/Files/Launch.au3',
       'bot/Encounter ReBuilt/Files/Pathing.au3','bot/Encounter ReBuilt/Files/Security.au3',
-      'bot/Encounter ReBuilt/Files/SupplyManager.au3','bot/Encounter ReBuilt/Files/_Includes.au3',
+      'bot/Encounter ReBuilt/Files/SupplyManager.au3','bot/Encounter ReBuilt/Files/_Includes.au3','bot/Encounter ReBuilt/Files/FiberFarm.au3',
       'bot/Encounter ReBuilt/Images/BannerGeneral.jpg','bot/Encounter ReBuilt/Images/BannerLootConfig.jpg',
       'bot/Encounter ReBuilt/Images/BannerTradeConfig.jpg','bot/Encounter ReBuilt/Images/Encounter.ico'}
     if manifest.get('format')!=1 or not required.issubset(manifest.get('files',{})) or not set(manifest.get('files',{})).issubset(allowed|bot_files):
@@ -651,6 +651,8 @@ class Hub:
             if value.isdigit():self.report(name,'storage',str(int(value)))
 
     def step(self,name,s):
+        # Rows may be accounts; the bot window and its character list use the session's character.
+        character=s.get('character',name)
         if s['stopping']:
             for key in ('render','ontop'):self.report(name,'_'+key+'_enabled',False)
             status,finished=advance_stop(s)
@@ -692,23 +694,23 @@ class Hub:
                            (self.native.kind(c)=='Button' and self.native.text(c) in captions)]
         children=s['controls']
         buttons={self.native.text(c):c for c in children if self.native.kind(c)=='Button'}
-        if self.native.title(h)=='Encounter Re:Built - '+name and 'Start' not in buttons:
+        if self.native.title(h)=='Encounter Re:Built - '+character and 'Start' not in buttons:
             recovered=s.get('recovery_attempted',False)
             s['phase']='done';self.report(name,'status','Recovered (Start confirmed)' if recovered else 'Started (window confirmed)');minimize_started_bot(self.native,h,s);self.sync_options(name,s)
         if s['phase']!='done':
             if time.monotonic()>s['deadline']:
-                self.report(name,'status',recover_start(self.native,name,s,children,buttons));return
+                self.report(name,'status',recover_start(self.native,character,s,children,buttons));return
             if s['phase']=='select':
                 for c in children:
                     if self.native.kind(c)!='ComboBox':continue
                     for i in range(1000):
                         text=self.native.text(c,0x148,i)
                         if not text:break
-                        if re.sub(r'^\s*\d+\s*-\s*','',text)==name:
+                        if re.sub(r'^\s*\d+\s*-\s*','',text)==character:
                             if self.native.u.PostMessageW(c,0x14E,i,0):s['phase']='start'
                             return
             elif s['phase']=='start':
-                selected=any(self.native.kind(c)=='ComboBox' and re.sub(r'^\s*\d+\s*-\s*','',self.native.text(c))==name for c in children)
+                selected=any(self.native.kind(c)=='ComboBox' and re.sub(r'^\s*\d+\s*-\s*','',self.native.text(c))==character for c in children)
                 if selected and self.native.click(buttons.get('Start')):
                     s.update(phase='wait',deadline=time.monotonic()+600);self.report(name,'status','Start requested; waiting for game')
             return

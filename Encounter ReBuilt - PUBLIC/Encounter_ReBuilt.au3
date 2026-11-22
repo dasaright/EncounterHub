@@ -2095,6 +2095,8 @@ Func CreatePickupSet()
         Next
     EndIf
 
+    If Farm_IsFiber() Then Fiber_AddPickups($l_m_PickUpSet)
+
     Return $l_m_PickUpSet
 EndFunc
 
@@ -3650,7 +3652,7 @@ Func RestartGW()
 		GUI_SetBotState($GC_I_BOTSTATE_RUN)
 
 		AddOns_Out("[INFO] Preparing party setup")
-		HeartbeatStep("SetupEncounter", "SetupEncounter")
+		HeartbeatStep(Farm_SetupFunc(), Farm_SetupFunc())
     Else
 		Local $l_i_Err = @error
 		$s_i_RestartAttempts += 1
@@ -3700,7 +3702,7 @@ Func Main()
     WEnd
 
 	AddOns_Out("[INFO] Preparing party setup")
-    HeartbeatStep("SetupEncounter", "SetupEncounter")
+    HeartbeatStep(Farm_SetupFunc(), Farm_SetupFunc())
 	If $g_b_ForcePauseRequested Then
 	    $g_b_ForcePauseRequested = False
 	    $g_b_PauseRequested = False
@@ -3732,7 +3734,11 @@ Func Main()
 
         Switch GUI_GetBotState()
 			Case $GC_I_BOTSTATE_RUN
-				Quest18()
+				If Farm_IsFiber() Then
+					Fiber_Main()
+				Else
+					Quest18()
+				EndIf
                 ; Manual supply requests outrank normal pause handling and automatic supply checks.
                 If Supply_CheckManualRequest() Then
                     $g_b_ForcePauseRequested=False
