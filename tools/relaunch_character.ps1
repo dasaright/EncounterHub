@@ -41,6 +41,14 @@ public static class HubInput {
     # Qt does not expose the per-row cell buttons to UI Automation, so click the
     # centre of the cell at (row of $Character, column whose header is $caption).
     function Click-RowCell($hub, [string]$caption) {
+        # Hub 2.3+ has tabs; only the visible tab is exposed, so show the Bots tab first.
+        $tab = $hub.FindFirst($Scope::Descendants, (New-Object System.Windows.Automation.AndCondition(
+            (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, [System.Windows.Automation.ControlType]::TabItem)),
+            (New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, 'Bots')))))
+        if ($tab) {
+            $select = $tab.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)
+            if (-not $select.Current.IsSelected) { $select.Select(); Start-Sleep -Milliseconds 500 }
+        }
         $cell = $hub.FindFirst($Scope::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, $Character)))
         if (-not $cell) { throw "Row for '$Character' not found in the hub" }
         $header = $hub.FindFirst($Scope::Descendants, (New-Object System.Windows.Automation.AndCondition(
