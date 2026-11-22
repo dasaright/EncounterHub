@@ -44,3 +44,24 @@ The rightmost Put in Storage column mirrors the bot’s Statistics-tab count of 
 Encounter Hub uses its own taco pierced by an anime-style dagger icon. The window, title artwork, taskbar, new desktop shortcuts and newly built executable share the same image. Use Check for Updates, then Update Now to install the desktop artwork and restart the hub while active bots continue running. Existing shortcuts referencing the old executable icon can be recreated with Create Desktop Shortcut and pinned again. The release executable embeds the new icon; earlier executables retain their original embedded file icon until replaced with the new executable build.
 
 Source artwork: assets/taco-dagger.png and assets/taco-dagger.ico. The ICO is also embedded in qt_app.py so existing updater allowlists can deliver it in one update. Generated with the built-in image tool from TacoBot's current taco: preserve the taco identity and add an anime-style fantasy dagger piercing through it, crisp app-icon composition, transparent background, no text or gore.
+
+## Building the bot
+
+`Encounter_ReBuilt.exe` must be compiled inside a GwAu3 checkout (it includes `../../../API/_GwAu3.au3`).
+`tools/build_bot.ps1` copies the bot sources from `Encounter ReBuilt - PUBLIC` into
+`<GwAu3>\Scripts\EncounterHub\Encounter ReBuilt`, runs Au3Check (failing only on errors in the bot's own files),
+compiles a 32-bit exe with Aut2Exe, swaps it in (keeping the previous exe as `Encounter_ReBuilt.exe.previous`),
+and copies the new exe back into this repository:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\build_bot.ps1 [-GwAu3Root <path>] [-AutoItRoot <path>]
+```
+
+Running bots keep the old build until they are relaunched. `tools/relaunch_character.ps1 -Character "<name>"`
+restarts one character through its Encounter Hub row; run it elevated, like the hub.
+
+## Live market prices
+
+When a bot quotes trader prices during a supply run it writes them to `Config\market.prices.ini` in the bot folder
+(at most once a minute across all bots). Encounter Hub picks them up automatically and uses them for the
+per-item and Full Conset costs in the Supply Manager.
