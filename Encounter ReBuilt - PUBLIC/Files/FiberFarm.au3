@@ -328,7 +328,7 @@ Func Fiber_AddPickups(ByRef $a_m_PickUpSet)
 	For $i = 0 To UBound($GC_AI_EVENT_ITEMS) - 1
 		Fiber_AddPickup($a_m_PickUpSet, $GC_AI_EVENT_ITEMS[$i])
 	Next
-	$a_m_PickUpSet[-1] = True ; marker: CanPickUp also accepts salvageable weapon types
+	$a_m_PickUpSet["fiber"] = True ; marker (string key: AutoIt maps reject negative integer keys): CanPickUp also accepts salvageable weapon types
 	If Not MapExists($a_m_PickUpSet, $GC_I_MODELID_DYE) Then
 		$a_m_PickUpSet[$GC_I_MODELID_DYE] = BitOR(BitShift($GC_I_STATISTICS_TRACKER_BLACK_DYE, -16), BitAND($GC_I_EXTRAID_DYE_BLACK, 0xFFFF))
 	EndIf
