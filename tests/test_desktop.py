@@ -88,7 +88,7 @@ class QtDesktop(unittest.TestCase):
         self.assertEqual(self.window.table.columnCount(),17)
         self.assertEqual(COLUMNS,('check','account','character','farm','status','command','render','ontop','pause','resume','trade','stop','launch','buycons','automatic','manual','storage'))
         self.assertEqual(self.window.row_widgets['Character One']['farm'].currentText(),'Ministerial')
-        self.assertEqual(self.window.row_widgets['Character One']['character'].currentText(),'Character One')
+        self.assertEqual(self.window.tree.set('Character One','character'),'Character One')
         self.window.command=Mock();self.window.launch=Mock();self.window.stop=Mock()
         self.window.row_widgets['Character One']['pause'].click();self.window.command.assert_called_once_with('Pause',['Character One'])
         self.window.command.reset_mock();self.window.row_widgets['Character One']['trade'].click()
@@ -150,65 +150,87 @@ class QtDesktop(unittest.TestCase):
         self.assertIn(name,w.buy_cons_pending)
         self.assertFalse(w.row_widgets[name]['buycons'].isEnabled())
 
-    def test_fiber_farm_selects_character_and_writes_farms_ini(self):
+    def test_fiber_farm_plays_the_accounts_ranger_from_the_character_manager(self):
         import configparser
         w=self.window;key='Character One'
         w.row_widgets[key]['farm'].setCurrentText('Fiber')
         self.assertEqual(w.row_character(key),'')
-        with patch('qt_app.QtDialogs.askyesno',return_value=True):w.choose_character(key,'Ranger Two')
+        self.assertIn('No Ranger',w.tree.set(key,'character'))
+        self.assertTrue(w.add_character('Ranger Two','Ranger',key))
         self.assertEqual(w.row_character(key),'Ranger Two')
+        self.assertEqual(w.tree.set(key,'character'),'Ranger Two')
         self.assertEqual(w.row_character(key,'Ministerial'),'Character One')
         from qt_app import parse_characters,read_ini_text
         self.assertIn('Ranger Two',parse_characters(read_ini_text(w.characters_ini())[0]))
+        self.assertEqual(w.settings['characters']['Ranger Two'],{'profession':'Ranger','account':key})
         farms=configparser.ConfigParser();farms.optionxform=str;farms.read(w.exe.parent/'Config'/'farms.ini')
         self.assertEqual(dict(farms['Farms']),{'Character One':'Ministerial','Ranger Two':'Fiber'})
         supply=configparser.ConfigParser();supply.read(w.exe.parent/'Config'/'supply.ini')
         self.assertIn('Character:Ranger Two',supply)
         self.assertEqual(supply['Fiber']['Threshold'],'6500')
+        self.assertEqual(w.character_table.rowCount(),2)
 
-    def test_migration_keeps_the_character_that_had_settings_as_ministerial(self):
-        import json as _json
-        from qt_app import Desktop
-        folder=Path(self.temp.name)
-        (folder/'Config'/'characters.ini').write_text('[Zed Main]\nEmail = one@example.com\n[Aim Ranger]\nEmail = one@example.com\n')
-        settings=folder/'EncounterHub'/'settings.json'
-        settings.write_text(_json.dumps({'bot_path':str(folder/'Encounter_ReBuilt.exe'),'selected':['Zed Main'],
-            'account_supply_profiles':{'Zed Main':{'automatic_profile':'Grail of Might','manual_profile':'Res Scrolls'}}}))
-        with patch.dict(os.environ,{'LOCALAPPDATA':str(folder)}):window=Desktop('test',start_supervisor=False)
-        try:
-            (key,)=window.rows
-            self.assertEqual(window.account_characters[key],['Aim Ranger','Zed Main'])
-            self.assertEqual(window.row_character(key),'Zed Main')
-            self.assertEqual(window.row_widgets[key]['automatic'].currentText(),'Grail of Might')
-            self.assertEqual(window.checked,{key})
-        finally:
-            window.monitor_stop.set();window.monitor_worker.join(timeout=5);window.restarting=True;window.close();self.app.processEvents()
-
-    def test_invalid_or_declined_character_is_not_added(self):
+    def test_changing_profession_changes_the_farm_character(self):
         w=self.window;key='Character One'
+        w.add_character('Ranger Two','Warrior',key)
         w.row_widgets[key]['farm'].setCurrentText('Fiber')
-        w.choose_character(key,'Bad]Name')
-        with patch('qt_app.QtDialogs.askyesno',return_value=False):w.choose_character(key,'Ranger Two')
         self.assertEqual(w.row_character(key),'')
+        w.set_profession('Ranger Two','Ranger')
+        self.assertEqual(w.row_character(key),'Ranger Two')
+
+    def test_invalid_or_duplicate_character_is_not_added(self):
+        w=self.window;key='Character One'
+        self.assertFalse(w.add_character('Bad]Name','Ranger',key))
+        self.assertFalse(w.add_character('Character One','Ranger',key))
         self.assertEqual(w.account_characters[key],['Character One'])
 
-    def test_launch_uses_the_farm_character_and_locks_the_row(self):
+    def test_remove_character_keeps_the_last_login(self):
+        w=self.window;key='Character One'
+        w.add_character('Ranger Two','Ranger',key)
+        self.assertTrue(w.remove_character(key,'Character One',confirm=False))
+        self.assertEqual(w.account_characters[key],['Ranger Two'])
+        self.assertFalse(w.remove_character(key,'Ranger Two',confirm=False))
+        self.assertEqual(w.row_character(key,'Ministerial'),'Ranger Two')
+        from qt_app import parse_characters,read_ini_text
+        self.assertEqual(list(parse_characters(read_ini_text(w.characters_ini())[0])),['Ranger Two'])
+
+    def test_launch_uses_the_farm_character_and_locks_the_farm(self):
         w=self.window;key='Character One'
         w.broker=Mock();w.broker.call.return_value={'identifier':'abc','pid':99}
         with patch('qt_app.RemoteProcess',return_value=FakeOwnedProcess(None)):w.launch([key])
         w.broker.call.assert_called_once_with('launch',exe=str(w.exe.resolve()),character='Character One')
         self.assertEqual(w.sessions[key]['character'],'Character One')
         self.assertFalse(w.row_widgets[key]['farm'].isEnabled())
-        self.assertFalse(w.row_widgets[key]['character'].isEnabled())
         w.row_widgets[key]['farm'].setCurrentText('Fiber')
         self.assertEqual(w.account_record(key)['farm'],'Ministerial')
 
-    def test_fiber_without_character_is_not_launched(self):
+    def test_migration_keeps_main_character_and_marks_fiber_choice_as_ranger(self):
+        import json as _json
+        from qt_app import Desktop,account_key
+        folder=Path(self.temp.name)
+        (folder/'Config'/'characters.ini').write_text('[Zed Main]\nEmail = one@example.com\n[Aim Ranger]\nEmail = one@example.com\n')
+        key=account_key('one@example.com','Zed Main')
+        (folder/'EncounterHub'/'settings.json').write_text(_json.dumps({'bot_path':str(folder/'Encounter_ReBuilt.exe'),'selected':['Zed Main'],
+            'account_supply_profiles':{'Zed Main':{'automatic_profile':'Grail of Might','manual_profile':'Res Scrolls'}},
+            'accounts':{key:{'farm':'Fiber','characters':{'Fiber':'Aim Ranger'}}}}))
+        with patch.dict(os.environ,{'LOCALAPPDATA':str(folder)}):window=Desktop('test',start_supervisor=False)
+        try:
+            self.assertEqual(list(window.rows),[key])
+            self.assertEqual(window.account_characters[key],['Aim Ranger','Zed Main'])
+            self.assertEqual(window.character_profession('Aim Ranger'),'Ranger')
+            self.assertEqual(window.row_character(key),'Aim Ranger')
+            self.assertEqual(window.row_character(key,'Ministerial'),'Zed Main')
+            self.assertEqual(window.row_widgets[key]['automatic'].currentText(),'Grail of Might')
+            self.assertEqual(window.checked,{key})
+        finally:
+            window.monitor_stop.set();window.monitor_worker.join(timeout=5);window.restarting=True;window.close();self.app.processEvents()
+
+    def test_fiber_without_ranger_is_not_launched(self):
         w=self.window;key='Character One';w.broker=Mock()
         w.row_widgets[key]['farm'].setCurrentText('Fiber')
         w.launch([key])
         w.broker.call.assert_not_called()
-        self.assertIn('Choose the Fiber character',w.tree.set(key,'status'))
+        self.assertIn('No Ranger',w.tree.set(key,'status'))
 
     def test_update_buttons_position_and_no_silent_install(self):
         self.assertLess(self.window.check_button.pos().y(),self.window.update_button.pos().y())

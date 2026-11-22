@@ -198,6 +198,28 @@ Func Fiber_ResignAndReturn()
 	Return IsAlive("Fiber resign")
 EndFunc
 
+; Use a skill and wait until it was really used (it goes on recharge), then its aftercast; like gw-suite
+; UseSkillEx. AddOns_UseSkillEx returns before the cast starts, which let later skills fire too early.
+Func Fiber_UseSkill($a_i_Slot, $a_v_Target = -2, $a_i_Timeout = 3000)
+	If AddOns_GetIsDead(-2) Or Not AddOns_GetIsRecharged($a_i_Slot) Then Return False
+	Local $l_i_SkillID = Skill_GetSkillbarInfo($a_i_Slot, "SkillID")
+	If AddOns_GetCurrentEnergy(-2) < AddOns_GetEnergyReq($l_i_SkillID) Then Return False
+	Local $l_i_MyID = Agent_GetMyID()
+	Local $l_i_TargetID = $l_i_MyID
+	If $a_v_Target <> -2 Then $l_i_TargetID = Agent_ConvertID($a_v_Target)
+	If $l_i_TargetID = 0 Then Return False
+	If $l_i_TargetID <> $l_i_MyID Then Agent_ChangeTarget($l_i_TargetID)
+	Skill_UseSkill($a_i_Slot, $l_i_TargetID)
+	Local $l_h_Timer = TimerInit()
+	Do
+		Sleep(50)
+		If AddOns_GetIsDead(-2) Then Return False
+		If $l_i_TargetID <> $l_i_MyID And AddOns_GetIsDead($l_i_TargetID) Then Return False
+	Until Not AddOns_GetIsRecharged($a_i_Slot) Or TimerDiff($l_h_Timer) > $a_i_Timeout
+	Sleep($GC_AMX2_SKILL_DATA[$l_i_SkillID][$GC_F_SKILL_AFTERCAST] * 1000)
+	Return Not AddOns_GetIsRecharged($a_i_Slot)
+EndFunc
+
 ; Movement with Dash / Zojun's Haste like gw-suite MoveRun.
 Func Fiber_MoveRun($a_f_X, $a_f_Y, $a_b_UseDash = False, $a_b_UseZojuns = False)
 	If AddOns_GetIsDead(-2) Or Map_GetMapID() <> $GC_I_FIBER_EXPLORABLE Then Return False
@@ -208,10 +230,10 @@ Func Fiber_MoveRun($a_f_X, $a_f_Y, $a_b_UseDash = False, $a_b_UseZojuns = False)
 		Other_PingSleep(200)
 		If AddOns_GetIsDead(-2) Or Map_GetMapID() <> $GC_I_FIBER_EXPLORABLE Then Return False
 		If $a_b_UseDash And AddOns_GetIsRecharged($GC_I_FIBER_SKILL_DASH) Then
-			AddOns_UseSkillEx($GC_I_FIBER_SKILL_DASH)
+			Fiber_UseSkill($GC_I_FIBER_SKILL_DASH)
 		ElseIf $a_b_UseZojuns And AddOns_GetIsRecharged($GC_I_FIBER_SKILL_ZOJUNS) _
 				And Not AddOns_GetHasEffect($GC_I_SKILL_ID_DASH) And Not AddOns_GetHasEffect($GC_I_SKILL_ID_ZOJUNS_HASTE) Then
-			AddOns_UseSkillEx($GC_I_FIBER_SKILL_ZOJUNS)
+			Fiber_UseSkill($GC_I_FIBER_SKILL_ZOJUNS)
 		EndIf
 		If Not AddOns_GetIsMoving(-2) Then
 			Map_Move($a_f_X, $a_f_Y, 0)
@@ -226,13 +248,18 @@ EndFunc
 ; The Dragon Moss route from gw-suite fiber.au3. Returns True when the character survived.
 Func Fiber_Combat()
 	If Map_GetMapID() <> $GC_I_FIBER_EXPLORABLE Then Return False
+	; Player/party pointers change every instance; PickUpLoot and other helpers need them.
+	AddOns_UpdatePartyPtrs()
 
 	Skill_UseHeroSkill($GC_I_FIBER_PYRE, 4) ; Quickening Zephyr
 	Skill_UseHeroSkill($GC_I_FIBER_PYRE, 2) ; Shadow of Haste
 	Skill_UseSkill($GC_I_FIBER_SKILL_DASH)
-	AddOns_UseSkillEx($GC_I_FIBER_SKILL_RETURN, AddOns_GetNearestAgent_NPCLiving(-2, -1, True, -8440, 18389))
-	AddOns_UseSkillEx($GC_I_FIBER_SKILL_SHROUD)
-	AddOns_UseSkillEx($GC_I_FIBER_SKILL_SHADOW_FORM)
+	; Return shadow-steps to the escort NPC; the next skills must wait until it was used.
+	Local $l_p_Escort = AddOns_GetNearestAgent_NPCLiving(-2, -1, True, -8440, 18389)
+	If $l_p_Escort = 0 Then AddOns_Out("[WARN] Escort NPC not found for Return (is 'A New Escort' in the quest log?)")
+	If Not Fiber_UseSkill($GC_I_FIBER_SKILL_RETURN, $l_p_Escort) Then AddOns_Out("[WARN] Return was not used")
+	Fiber_UseSkill($GC_I_FIBER_SKILL_SHROUD)
+	Fiber_UseSkill($GC_I_FIBER_SKILL_SHADOW_FORM)
 	Party_CommandHero($GC_I_FIBER_PYRE, -7924, 18281)
 
 	Fiber_MoveRun(-7086, 17979, True)
@@ -244,7 +271,7 @@ Func Fiber_Combat()
 	Fiber_MoveRun(-6111, 17160)
 	AddOns_MoveTo(-6111, 17160) ; Shadow of Haste spot
 	Sleep(500)
-	AddOns_UseSkillEx($GC_I_FIBER_SKILL_SHADOW_HASTE)
+	Fiber_UseSkill($GC_I_FIBER_SKILL_SHADOW_HASTE)
 	Fiber_MoveRun(-6604, 18585)
 	AddOns_MoveTo(-6604, 18585) ; cancels Shadow of Haste
 
@@ -255,21 +282,21 @@ Func Fiber_Combat()
 	Do
 		Sleep(100)
 	Until AddOns_GetIsRecharged($GC_I_FIBER_SKILL_SHADOW_FORM) Or AddOns_GetIsDead(-2) Or TimerDiff($l_h_Deadlock) > 30000
-	AddOns_UseSkillEx($GC_I_FIBER_SKILL_SHADOW_FORM)
-	AddOns_UseSkillEx($GC_I_FIBER_SKILL_WHIRLING)
+	Fiber_UseSkill($GC_I_FIBER_SKILL_SHADOW_FORM)
+	Fiber_UseSkill($GC_I_FIBER_SKILL_WHIRLING)
 
 	$l_h_Deadlock = TimerInit()
 	Do
 		Sleep(250)
 		If AddOns_GetIsDead(-2) Then ExitLoop
 	Until AddOns_GetCurrentEnergy(-2) > 15 Or TimerDiff($l_h_Deadlock) > 5000
-	AddOns_UseSkillEx($GC_I_FIBER_SKILL_RADIANT)
+	Fiber_UseSkill($GC_I_FIBER_SKILL_RADIANT)
 
 	; Wait for the balled-up moss to die, salvaging roots while waiting.
 	$l_h_Deadlock = TimerInit()
 	Do
 		If AddOns_GetIsDead(-2) Or Not IsAlive("Fiber_Combat") Then ExitLoop
-		If Not Fiber_SalvageOne() Then Sleep(500)
+		If Not Fiber_SalvageOne(True) Then Sleep(500)
 	Until AddOns_GetNumberOfAgent_EnemyLiving_NoSM(-2, 156) = 0 Or TimerDiff($l_h_Deadlock) > 20000
 
 	If AddOns_GetIsDead(-2) Then
@@ -278,35 +305,145 @@ Func Fiber_Combat()
 	EndIf
 	AddOns_Out("[FIBER] Looting")
 	Sleep(500)
-	PickUpLoot(1000)
+	AddOns_UpdatePartyPtrs()
+	PickUpLoot(2500)
 	Return True
 EndFunc
 
-; Extra pickups for the fiber farm (CreatePickupSet adds these when the Fiber farm is selected).
+; Extra pickups for the fiber farm (CreatePickupSet adds these when the Fiber farm is selected):
+; gw-suite fiber.au3 CanPickUpEx - materials, gems, lockpicks, black dye and event / consumable drops.
+; Gold items are always picked up (CanPickUp); weapons of salvageable types are added in CanPickUp.
 Func Fiber_AddPickups(ByRef $a_m_PickUpSet)
 	Local $l_ai_Models[] = [$GC_I_MODELID_PLANT_FIBRES, $GC_I_MODELID_DRAGON_ROOT, $GC_I_MODELID_SPIRITWOOD_PLANK, _
 		$GC_I_MODELID_MONSTROUS_EYE, $GC_I_MODELID_MONSTROUS_CLAW, $GC_I_MODELID_MONSTROUS_FANG, _
-		$GC_I_MODELID_RUBY, $GC_I_MODELID_SAPPHIRE, $GC_I_MODELID_DIAMOND, $GC_I_MODELID_LOCKPICK]
+		$GC_I_MODELID_RUBY, $GC_I_MODELID_SAPPHIRE, $GC_I_MODELID_DIAMOND, $GC_I_MODELID_LOCKPICK, _
+		$GC_I_MODELID_PUMPKIN_PIE, $GC_I_MODELID_PUMPKIN_COOKIE, $GC_I_MODELID_CANDY_CORN, $GC_I_MODELID_CANDY_APPLE, _
+		$GC_I_MODELID_TRICK_OR_TREAT_BAG, $GC_I_MODELID_GOLDEN_EGG, $GC_I_MODELID_CHOCOLATE_BUNNY, $GC_I_MODELID_CUPCAKE, _
+		$GC_I_MODELID_HONEYCOMB, $GC_I_MODELID_SUGARY_BLUE_DRINK, $GC_I_MODELID_HARD_APPLE_CIDER, $GC_I_MODELID_HUNTERS_ALE, _
+		$GC_I_MODELID_KRYTAN_BRANDY, $GC_I_MODELID_CHAMPAGNE_POPPER, $GC_I_MODELID_BOTTLE_ROCKET, $GC_I_MODELID_SPARKLER, _
+		$GC_I_MODELID_DELICIOUS_CAKE, $GC_I_MODELID_BATTLE_ISLE_ICED_TEA, $GC_I_MODELID_PARTY_BEACON, $GC_I_MODELID_WAR_SUPPLIES]
 	For $i = 0 To UBound($l_ai_Models) - 1
-		If MapExists($a_m_PickUpSet, $l_ai_Models[$i]) Then ContinueLoop
-		$a_m_PickUpSet[$l_ai_Models[$i]] = BitOR(BitShift($GC_I_STATISTICS_TRACKER_NONE, -16), BitAND($GC_I_EXTRAID_ANY, 0xFFFF))
+		Fiber_AddPickup($a_m_PickUpSet, $l_ai_Models[$i])
+	Next
+	For $i = 0 To UBound($GC_AI_EVENT_ITEMS) - 1
+		Fiber_AddPickup($a_m_PickUpSet, $GC_AI_EVENT_ITEMS[$i])
+	Next
+	$a_m_PickUpSet[-1] = True ; marker: CanPickUp also accepts salvageable weapon types
+	If Not MapExists($a_m_PickUpSet, $GC_I_MODELID_DYE) Then
+		$a_m_PickUpSet[$GC_I_MODELID_DYE] = BitOR(BitShift($GC_I_STATISTICS_TRACKER_BLACK_DYE, -16), BitAND($GC_I_EXTRAID_DYE_BLACK, 0xFFFF))
+	EndIf
+EndFunc
+
+Func Fiber_AddPickup(ByRef $a_m_PickUpSet, $a_i_Model)
+	If MapExists($a_m_PickUpSet, $a_i_Model) Then Return
+	$a_m_PickUpSet[$a_i_Model] = BitOR(BitShift($GC_I_STATISTICS_TRACKER_NONE, -16), BitAND($GC_I_EXTRAID_ANY, 0xFFFF))
+EndFunc
+
+; Weapon types gw-suite picks up and salvages for materials.
+Func Fiber_IsSalvageWeaponType($a_i_Type)
+	Switch $a_i_Type
+		Case $GC_I_TYPE_SHIELD, $GC_I_TYPE_OFFHAND, $GC_I_TYPE_STAFF, $GC_I_TYPE_SWORD, $GC_I_TYPE_AXE, _
+				$GC_I_TYPE_WAND, $GC_I_TYPE_HAMMER, $GC_I_TYPE_DAGGERS, $GC_I_TYPE_BOW
+			Return True
+	EndSwitch
+	Return False
+EndFunc
+
+; Weapons that are always kept (stored, never sold or salvaged), from gw-suite: dual vamp golds and
+; perfect shields. Everything else follows the bot's normal item filter.
+Func Fiber_IsKeeper($a_p_Item)
+	If $a_p_Item = 0 Then Return False
+	Local $l_i_Type = Memory_Read($a_p_Item + 0x20, "byte")
+	If Not Fiber_IsSalvageWeaponType($l_i_Type) And $l_i_Type <> $GC_I_TYPE_SCYTHE And $l_i_Type <> $GC_I_TYPE_SPEAR Then Return False
+	If Item_GetItemInfoByPtr($a_p_Item, "Rarity") <> $GC_I_RARITY_GOLD Then Return False
+	Local $l_s_Mods = StringUpper(Item_GetModStruct($a_p_Item))
+	If $l_s_Mods = "" Then Return False
+	; Dual vamp: +15% damage and vampiric strike (15^ or 14^)
+	If StringInStr($l_s_Mods, "0F0038220100E820") Or StringInStr($l_s_Mods, "0E0038220100E820") Then Return True
+	If $l_i_Type = $GC_I_TYPE_SHIELD Then Return Fiber_IsPerfectShield($a_p_Item, $l_s_Mods)
+	Return False
+EndFunc
+
+; gw-suite IsPerfectShield: max armor (16), and +30 health or +45^ench (or a good inherent) with a matching
+; req <= 9 inherent / +10 vs. damage / +10 vs. monster / +1 attribute 20% mod.
+Func Fiber_IsPerfectShield($a_p_Item, $a_s_Mods)
+	If Item_GetItemMaxDmg($a_p_Item) <> 16 Then Return False
+	Local $l_i_Req = Item_GetItemReq($a_p_Item)
+	Local $l_b_Plus30 = StringInStr($a_s_Mods, "001E4823") > 0
+	Local $l_b_Plus45Ench = StringInStr($a_s_Mods, "002D6823") > 0
+	Local $l_b_Plus4xEnch = StringInStr($a_s_Mods, "002C6823") Or StringInStr($a_s_Mods, "002B6823") Or StringInStr($a_s_Mods, "002A6823") Or StringInStr($a_s_Mods, "00296823")
+	Local $l_b_Minus2Ench = StringInStr($a_s_Mods, "2008820") > 0
+	Local $l_b_Minus3Hex = StringInStr($a_s_Mods, "3009820") > 0
+	Local $l_b_VsBlind = StringInStr($a_s_Mods, "DF017824") > 0
+	Local $l_b_VsMonster = StringInStr($a_s_Mods, "0A004821") Or StringInStr($a_s_Mods, "0A044821") Or StringInStr($a_s_Mods, "0A084821")
+	Local $l_b_VsSkeletons = StringInStr($a_s_Mods, "0A044821") > 0
+	Local $l_b_VsDemonsSkel = StringInStr($a_s_Mods, "0A044821") Or StringInStr($a_s_Mods, "0A084821")
+	Local $l_b_VsElement = StringInStr($a_s_Mods, "0A031821") Or StringInStr($a_s_Mods, "0A041821") Or StringInStr($a_s_Mods, "0A051821") Or StringInStr($a_s_Mods, "0A0B1821")
+	Local $l_b_VsPhysical = StringInStr($a_s_Mods, "0A001821") Or StringInStr($a_s_Mods, "0A011821") Or StringInStr($a_s_Mods, "0A021821")
+	Local $l_b_VsLightning = StringInStr($a_s_Mods, "0A041821") > 0
+	Local $l_b_Attribute = False
+	Local $l_as_Attr[] = ["0118240", "0218240", "0318240", "0418240", "0518240", "0618240", "0718240", "0818240", _
+		"0918240", "0A18240", "0B18240", "0D18240", "0E18240", "0F18240", "1018240"]
+	For $i = 0 To UBound($l_as_Attr) - 1
+		If StringInStr($a_s_Mods, $l_as_Attr[$i]) Then $l_b_Attribute = True
+	Next
+
+	If $l_b_Plus30 Or $l_b_Plus45Ench Then
+		If $l_b_VsMonster Then Return True
+		If $l_i_Req <= 9 And ($l_b_VsElement Or $l_b_VsPhysical Or $l_b_Attribute Or $l_b_Minus2Ench) Then Return True
+	EndIf
+	If $l_i_Req <= 9 And $l_b_Minus2Ench And ($l_b_VsMonster Or $l_b_VsElement Or $l_b_VsPhysical) Then Return True
+	If $l_i_Req <= 9 And $l_b_Plus4xEnch And $l_b_VsDemonsSkel Then Return True
+	If $l_b_Minus3Hex And $l_b_VsSkeletons Then Return True
+	If $l_b_VsBlind And ($l_b_VsSkeletons Or $l_b_VsLightning) Then Return True
+	Return False
+EndFunc
+
+; Move kept weapons (Fiber_IsKeeper) into storage.
+Func Fiber_StoreKeepers()
+	Local $l_av2_Inv = Item_GetInventoryArray()
+	For $i = 0 To UBound($l_av2_Inv, $UBOUND_ROWS) - 1
+		Local $l_p_Item = $l_av2_Inv[$i][$GC_I_INVENTORY_PTR]
+		If Not Fiber_IsKeeper($l_p_Item) Then ContinueLoop
+		Local $l_ai_Slot = AddOns_GetEmptyStorageSlot()
+		If $l_ai_Slot[0] = 0 Then
+			AddOns_Out("[WARN] Storage is full; keeping a rare weapon in the bags")
+			Return
+		EndIf
+		Item_MoveItem_($l_p_Item, $l_ai_Slot[0], $l_ai_Slot[1])
+		Local $l_h_Timer = TimerInit()
+		While Item_GetItemBySlot($l_ai_Slot[0], $l_ai_Slot[1]) = 0 And TimerDiff($l_h_Timer) < 1500
+			Sleep(20)
+		WEnd
+		AddOns_Out("[FIBER] Stored a rare weapon (dual vamp / perfect shield)")
+		$g_i_Count_StoredGoldItem += 1
 	Next
 EndFunc
 #EndRegion Run
 
 #Region Inventory
-; Salvage one dragon root or spiritwood plank (for fiber). Returns True when something was salvaged.
-Func Fiber_SalvageOne()
+; Salvage one item for materials: dragon roots / spiritwood first, then non-gold weapons of the salvage
+; types (gold items are left to the item filter / rare-weapon storage). Returns True when one was salvaged.
+Func Fiber_SalvageOne($a_b_Weapons = False)
 	If Supply_BagCount($GC_I_MODELID_SALVAGE_KIT) = 0 Then Return False
 	Local $l_av2_Inv = Item_GetInventoryArray()
+	Local $l_i_Weapon = 0
 	For $i = 0 To UBound($l_av2_Inv, $UBOUND_ROWS) - 1
 		Local $l_i_Model = $l_av2_Inv[$i][$GC_I_INVENTORY_MODELID]
-		If $l_i_Model <> $GC_I_MODELID_DRAGON_ROOT And $l_i_Model <> $GC_I_MODELID_SPIRITWOOD_PLANK Then ContinueLoop
-		If Not Item_SalvageItem($l_av2_Inv[$i][$GC_I_INVENTORY_ITEMID], "Standard", "Materials") Then Return False
-		Other_PingSleep(600)
-		Return True
+		If $l_i_Model = $GC_I_MODELID_DRAGON_ROOT Or $l_i_Model = $GC_I_MODELID_SPIRITWOOD_PLANK Then
+			If Not Item_SalvageItem($l_av2_Inv[$i][$GC_I_INVENTORY_ITEMID], "Standard", "Materials") Then Return False
+			Other_PingSleep(600)
+			Return True
+		EndIf
+		If $a_b_Weapons And $l_i_Weapon = 0 And Fiber_IsSalvageWeaponType($l_av2_Inv[$i][$GC_I_INVENTORY_ITEMTYPE]) _
+				And $l_av2_Inv[$i][$GC_I_INVENTORY_RARITY] <> $GC_I_RARITY_GOLD And Not Fiber_IsKeeper($l_av2_Inv[$i][$GC_I_INVENTORY_PTR]) Then
+			$l_i_Weapon = $l_av2_Inv[$i][$GC_I_INVENTORY_ITEMID]
+		EndIf
 	Next
-	Return False
+	If $l_i_Weapon = 0 Then Return False
+	If Not Item_SalvageItem($l_i_Weapon, "Standard", "Materials") Then Return False
+	Other_PingSleep(1000)
+	Return True
 EndFunc
 
 ; Full material stacks to the material tab (then storage) after every run.
@@ -318,6 +455,7 @@ Func Fiber_StoreMaterials()
 		If Supply_BagCount($l_ai_Models[$i]) >= 250 Then AddOns_DepositItemsToStorage($l_ai_Models[$i], -1, 1, True, False)
 	Next
 	If Supply_BagCount($GC_I_MODELID_LOCKPICK) > 0 Then AddOns_DepositItemsToStorage($GC_I_MODELID_LOCKPICK, -1, -1, True, False)
+	Fiber_StoreKeepers()
 EndFunc
 
 Func Fiber_NeedsInventory()

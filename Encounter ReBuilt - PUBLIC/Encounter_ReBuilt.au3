@@ -2142,6 +2142,11 @@ Func CanPickUp($a_p_Item, $a_m_PickUpSet)
 		Return SetExtended($GC_I_STATISTICS_TRACKER_GOLDEN_ITEM, True)
 	EndIf
 
+	; Fiber farm: weapons of the salvageable types are picked up for materials (Fiber_AddPickups marks the set).
+	If MapExists($a_m_PickUpSet, -1) And Fiber_IsSalvageWeaponType(Memory_Read($a_p_Item + 0x20, "byte")) Then
+		Return SetExtended($GC_I_STATISTICS_TRACKER_NONE, True)
+	EndIf
+
 	If MapExists($a_m_PickUpSet, $l_i_ModelID) Then
         Local $l_i_Packed = $a_m_PickUpSet[$l_i_ModelID]
         Local $l_i_ReqExtraID = BitAND($l_i_Packed, 0xFFFF)
