@@ -69,10 +69,21 @@ public static class HubInput {
         # Measure only after the window is raised and settled, so the layout is final.
         $row = $cell.Current.BoundingRectangle; $col = $header.Current.BoundingRectangle
         $x = [int]($col.Left + $col.Width / 2); $y = [int]($row.Top + $row.Height / 2)
+        # The table is wider than a normal hub window: when the cell is scrolled outside the
+        # window, maximize the hub for this click and restore it afterwards.
+        $maximized = $false
+        $win = $hub.Current.BoundingRectangle
+        if ($x -ge $win.Right -or $x -le $win.Left -or $y -ge $win.Bottom -or $y -le $win.Top) {
+            [HubInput]::ShowWindow($hwnd, 3) | Out-Null; $maximized = $true  # SW_MAXIMIZE
+            Start-Sleep -Milliseconds 800
+            $row = $cell.Current.BoundingRectangle; $col = $header.Current.BoundingRectangle
+            $x = [int]($col.Left + $col.Width / 2); $y = [int]($row.Top + $row.Height / 2)
+        }
         # Never click blind: the top-level window under the point must be the hub itself.
         $pt = New-Object HubInput+POINT; $pt.X = $x; $pt.Y = $y
         $top = [HubInput]::GetAncestor([HubInput]::WindowFromPoint($pt), 2)  # GA_ROOT
         if ($top -ne $hwnd) {
+            if ($maximized) { [HubInput]::ShowWindow($hwnd, 9) | Out-Null }
             [HubInput]::SetWindowPos($hwnd, [IntPtr](-2), 0, 0, 0, 0, 0x0003) | Out-Null
             throw "Another window covers the hub at ($x,$y); not clicking"
         }
@@ -84,6 +95,7 @@ public static class HubInput {
         Start-Sleep -Milliseconds 100
         [HubInput]::SetCursorPos($p.X, $p.Y) | Out-Null
         Start-Sleep -Milliseconds 300
+        if ($maximized) { [HubInput]::ShowWindow($hwnd, 9) | Out-Null }  # SW_RESTORE
         [HubInput]::SetWindowPos($hwnd, [IntPtr](-2), 0, 0, 0, 0, 0x0003) | Out-Null  # HWND_NOTOPMOST
         "Clicked $caption for $Character at ($x,$y)"
     }
