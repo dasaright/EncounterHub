@@ -200,24 +200,51 @@ EndFunc
 
 ; Use a skill and wait until it was really used (it goes on recharge), then its aftercast; like gw-suite
 ; UseSkillEx. AddOns_UseSkillEx returns before the cast starts, which let later skills fire too early.
-Func Fiber_UseSkill($a_i_Slot, $a_v_Target = -2, $a_i_Timeout = 3000)
-	If AddOns_GetIsDead(-2) Or Not AddOns_GetIsRecharged($a_i_Slot) Then Return False
+Func Fiber_UseSkill($a_i_Slot, $a_v_Target = -2, $a_i_Timeout = 3000, $a_b_Report = False)
+	If AddOns_GetIsDead(-2) Then Return Fiber_SkillFailed($a_i_Slot, "player is dead", $a_b_Report)
+	If Not AddOns_GetIsRecharged($a_i_Slot) Then Return Fiber_SkillFailed($a_i_Slot, "still recharging", $a_b_Report)
 	Local $l_i_SkillID = Skill_GetSkillbarInfo($a_i_Slot, "SkillID")
-	If AddOns_GetCurrentEnergy(-2) < AddOns_GetEnergyReq($l_i_SkillID) Then Return False
+	Local $l_f_Energy = AddOns_GetCurrentEnergy(-2), $l_i_Req = AddOns_GetEnergyReq($l_i_SkillID)
+	If $l_f_Energy < $l_i_Req Then Return Fiber_SkillFailed($a_i_Slot, "energy " & Round($l_f_Energy) & " < " & $l_i_Req, $a_b_Report)
 	Local $l_i_MyID = Agent_GetMyID()
 	Local $l_i_TargetID = $l_i_MyID
 	If $a_v_Target <> -2 Then $l_i_TargetID = Agent_ConvertID($a_v_Target)
-	If $l_i_TargetID = 0 Then Return False
+	If $l_i_TargetID = 0 Then Return Fiber_SkillFailed($a_i_Slot, "no target", $a_b_Report)
 	If $l_i_TargetID <> $l_i_MyID Then Agent_ChangeTarget($l_i_TargetID)
 	Skill_UseSkill($a_i_Slot, $l_i_TargetID)
 	Local $l_h_Timer = TimerInit()
 	Do
 		Sleep(50)
-		If AddOns_GetIsDead(-2) Then Return False
-		If $l_i_TargetID <> $l_i_MyID And AddOns_GetIsDead($l_i_TargetID) Then Return False
+		If AddOns_GetIsDead(-2) Then Return Fiber_SkillFailed($a_i_Slot, "died while casting", $a_b_Report)
 	Until Not AddOns_GetIsRecharged($a_i_Slot) Or TimerDiff($l_h_Timer) > $a_i_Timeout
+	If AddOns_GetIsRecharged($a_i_Slot) Then
+		Local $l_s_Where = ""
+		If $l_i_TargetID <> $l_i_MyID Then $l_s_Where = " (target " & $l_i_TargetID & " at " & Round(AddOns_GetDistance($l_i_TargetID)) & ", allegiance " & Agent_GetAgentInfo($l_i_TargetID, "Allegiance") & ")"
+		Return Fiber_SkillFailed($a_i_Slot, "not cast within " & $a_i_Timeout & "ms, skill " & $l_i_SkillID & $l_s_Where, $a_b_Report)
+	EndIf
 	Sleep($GC_AMX2_SKILL_DATA[$l_i_SkillID][$GC_F_SKILL_AFTERCAST] * 1000)
-	Return Not AddOns_GetIsRecharged($a_i_Slot)
+	Return True
+EndFunc
+
+Func Fiber_SkillFailed($a_i_Slot, $a_s_Reason, $a_b_Report)
+	If $a_b_Report Then AddOns_Out("[WARN] Skill " & $a_i_Slot & " not used: " & $a_s_Reason)
+	Return False
+EndFunc
+
+; gw-suite target for Return: the NPC (allegiance 6) within 1320 of the player that is nearest to the
+; escort position.
+Func Fiber_FindEscort()
+	Local $l_ap_NPCs = AddOns_GetAgentArray_NPCLiving(-2, 1320)
+	Local $l_p_Best = 0, $l_f_Best = 0x7FFFFFFF
+	For $i = 1 To $l_ap_NPCs[0]
+		Local $l_f_Dist = AddOns_GetDistanceToXY(-8440, 18389, $l_ap_NPCs[$i])
+		If $l_f_Dist < $l_f_Best Then
+			$l_f_Best = $l_f_Dist
+			$l_p_Best = $l_ap_NPCs[$i]
+		EndIf
+	Next
+	If $l_p_Best = 0 Then $l_p_Best = AddOns_GetNearestAgent_NPCLiving(-2, -1, True, -8440, 18389)
+	Return $l_p_Best
 EndFunc
 
 ; Movement with Dash / Zojun's Haste like gw-suite MoveRun.
@@ -255,9 +282,13 @@ Func Fiber_Combat()
 	Skill_UseHeroSkill($GC_I_FIBER_PYRE, 2) ; Shadow of Haste
 	Skill_UseSkill($GC_I_FIBER_SKILL_DASH)
 	; Return shadow-steps to the escort NPC; the next skills must wait until it was used.
-	Local $l_p_Escort = AddOns_GetNearestAgent_NPCLiving(-2, -1, True, -8440, 18389)
+	Local $l_p_Escort = Fiber_FindEscort()
 	If $l_p_Escort = 0 Then AddOns_Out("[WARN] Escort NPC not found for Return (is 'A New Escort' in the quest log?)")
-	If Not Fiber_UseSkill($GC_I_FIBER_SKILL_RETURN, $l_p_Escort) Then AddOns_Out("[WARN] Return was not used")
+	If Not Fiber_UseSkill($GC_I_FIBER_SKILL_RETURN, $l_p_Escort, 3000, True) Then
+		Sleep(500)
+		$l_p_Escort = Fiber_FindEscort()
+		If Not Fiber_UseSkill($GC_I_FIBER_SKILL_RETURN, $l_p_Escort, 3000, True) Then AddOns_Out("[WARN] Return was not used")
+	EndIf
 	Fiber_UseSkill($GC_I_FIBER_SKILL_SHROUD)
 	Fiber_UseSkill($GC_I_FIBER_SKILL_SHADOW_FORM)
 	Party_CommandHero($GC_I_FIBER_PYRE, -7924, 18281)
