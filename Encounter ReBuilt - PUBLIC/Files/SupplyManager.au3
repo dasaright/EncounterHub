@@ -1,4 +1,6 @@
 #include-once
+Global Const $GC_I_SUPPLY_TRADER_LOT = 10
+Global Const $GC_I_SUPPLY_STACK = 250
 Global $g_i_SupplyQuoteModel = 0, $g_i_SupplyQuoteID = 0
 ; Minimum time between trader transactions: ~6 per second.
 Global Const $GC_I_SUPPLY_TRADE_INTERVAL_MS = 165
@@ -248,6 +250,7 @@ Func Supply_SellEctos($minimum)
                 $stopReason="no live quote"
                 ExitLoop 2
             EndIf
+            If $sold=0 Then Supply_PublishPrices(0,0,0,0,0,$price)
             If $price<$minimum Then
                 $stopReason="quote "&$price&"g is below the "&$minimum&"g minimum"
                 ExitLoop 2
@@ -375,6 +378,7 @@ Func Supply_ManualConsetOK()
     EndIf
     If Not Supply_Talk("Argus") Then Return False
     Local $ecto=Supply_QuoteSell($ectoID)
+    Supply_PublishPrices($bones,0,$dust,$feathers,$iron,$ecto)
     Local $cost=10*$dust+5*$feathers+5*$bones+10*$iron+750
     AddOns_Out("[SUPPLY] Full Conset estimate "&$cost&"g vs ecto "&$ecto&"g")
     Return $ecto>0 And $cost<=($ecto*0.8)
@@ -389,8 +393,6 @@ EndFunc
 ;   3. Craft   - walk to each crafter once and craft in batches, withdrawing materials from
 ;                storage between batches.
 ; ---------------------------------------------------------------------------------------------
-Global Const $GC_I_SUPPLY_TRADER_LOT = 10
-Global Const $GC_I_SUPPLY_STACK = 250
 Global Const $GC_I_SUPPLY_CRAFT_FEE = 250
 Global Const $GC_F_SUPPLY_TARGET_SHARE = 0.8
 Global Const $GC_I_SUPPLY_MAX_UNITS = 1000
@@ -424,25 +426,25 @@ Func Supply_Recipe($item, ByRef $model, ByRef $npc, ByRef $need, ByRef $batch)
             $npc="Kwat"
             $n[2]=50
             $n[3]=50
-            $batch=5
+            $batch=33
         Case "Res Scrolls"
             $model=$GC_I_SUPPLY_RES_SCROLL
             $npc="Alcus Nailbiter" ; also crafts Scrolls of Resurrection
             $n[0]=25
             $n[1]=25
-            $batch=10
+            $batch=33
         Case "Grail of Might"
             $model=$GC_I_MODELID_GRAIL_OF_MIGHT
             $npc="Eyja"
             $n[2]=50
             $n[4]=50
-            $batch=5
+            $batch=33
         Case "Armor of Salvation"
             $model=$GC_I_MODELID_ARMOR_OF_SALVATION
             $npc="Alcus Nailbiter"
             $n[0]=50
             $n[4]=50
-            $batch=5
+            $batch=33
         Case Else
             Return False
     EndSwitch
@@ -463,9 +465,92 @@ Func Supply_BagCount($model)
     Return AddOns_GetInventoryItemCountbyModelID($model,False)
 EndFunc
 ; Materials available for this routine: main bags + regular storage panes.
+; Material storage (Xunlai material tab, bag 6) keeps each common material in a fixed
+; slot (same map as BotsHub): bones 1, iron 2, dust 10, plant fibres 11, feathers 12.
+Func Supply_MatSlot($model)
+    Switch $model
+        Case $GC_I_MODELID_BONES
+            Return 1
+        Case $GC_I_MODELID_IRON
+            Return 2
+        Case $GC_I_MODELID_DUST
+            Return 10
+        Case $GC_I_MODELID_PLANT_FIBRES
+            Return 11
+        Case $GC_I_MODELID_FEATHERS
+            Return 12
+    EndSwitch
+    Return 0
+EndFunc
+Func Supply_MatStoragePtr($model)
+    Local $slot=Supply_MatSlot($model)
+    If $slot=0 Then Return 0
+    Local $p=Item_GetItemBySlot($GC_I_INVENTORY_MATERIAL_STORAGE,$slot)
+    If $p=0 Then Return 0
+    If Memory_Read($p+0x2C,"dword")<>$model Then Return 0
+    Return $p
+EndFunc
+Func Supply_MatStorageCount($model)
+    Local $p=Supply_MatStoragePtr($model)
+    If $p=0 Then Return 0
+    Return Memory_Read($p+0x4C,"short")
+EndFunc
+; Move every bag stack of a material into its material-storage slot. Returns the amount moved.
+Func Supply_DepositMatStorage($model)
+    Local $slot=Supply_MatSlot($model)
+    If $slot=0 Then Return 0
+    Local $start=Supply_Count($model)
+    Local $items=Item_GetInventoryArray()
+    For $r=0 To UBound($items,$UBOUND_ROWS)-1
+        If $items[$r][$GC_I_INVENTORY_MODELID]<>$model Then ContinueLoop
+        Local $before=Supply_Count($model)
+        Item_MoveItem($items[$r][$GC_I_INVENTORY_ITEMID],$GC_I_INVENTORY_MATERIAL_STORAGE,$slot)
+        Local $t=TimerInit()
+        While Supply_Count($model)>=$before And TimerDiff($t)<1000
+            Sleep(20)
+        WEnd
+        If Supply_Count($model)>=$before Then ExitLoop ; material storage slot is full
+    Next
+    Return $start-Supply_Count($model)
+EndFunc
+; Bring $amount of a material into the bags: regular storage tabs first, then material storage.
+Func Supply_WithdrawMat($model, $amount)
+    If $amount<=0 Then Return 0
+    Local $start=Supply_BagCount($model)
+    If AddOns_GetStorageItemCountbyModelID($model,False)>0 Then
+        AddOns_WithdrawItemsFromStorage($model,-1,$amount)
+        Local $t=TimerInit()
+        While Supply_BagCount($model)<$start+1 And TimerDiff($t)<800
+            Sleep(20)
+        WEnd
+    EndIf
+    Local $remaining=$amount-(Supply_BagCount($model)-$start)
+    While $remaining>0
+        Local $p=Supply_MatStoragePtr($model)
+        If $p=0 Then ExitLoop
+        Local $qty=Memory_Read($p+0x4C,"short")
+        If $qty<=0 Then ExitLoop
+        Local $take=$remaining
+        If $take>$qty Then $take=$qty
+        If $take>$GC_I_SUPPLY_STACK Then $take=$GC_I_SUPPLY_STACK
+        Local $slot=AddOns_GetEmptyInventorySlot()
+        If $slot[0]=0 Then ExitLoop
+        Local $before=Supply_BagCount($model)
+        Item_MoveItem_($p,$slot[0],$slot[1],$take)
+        Local $t2=TimerInit()
+        While Supply_BagCount($model)<$before+$take And TimerDiff($t2)<1500
+            Sleep(20)
+        WEnd
+        Local $got=Supply_BagCount($model)-$before
+        If $got<=0 Then ExitLoop
+        $remaining-=$got
+    WEnd
+    Return Supply_BagCount($model)-$start
+EndFunc
 Func Supply_MatOwned($i)
+    ; Bags + regular storage tabs + material storage.
     Local $model=Supply_MatModel($i)
-    Return Supply_BagCount($model)+AddOns_GetStorageItemCountbyModelID($model,False)
+    Return Supply_BagCount($model)+AddOns_GetStorageItemCountbyModelID($model,True)
 EndFunc
 ; Gold needed to buy the missing materials for $units plus the crafting fees.
 Func Supply_PlanCost($units, ByRef $perUnit, ByRef $owned, ByRef $lotPrice, $itemsPerUnit)
@@ -489,14 +574,17 @@ Func Supply_PlanSlots($units, ByRef $perUnit, ByRef $owned)
 EndFunc
 ; Move full stacks of the given materials into storage to free bag space.
 Func Supply_StashMats(ByRef $perUnit)
+    ; Free bag space: materials go to their material-storage slot first; full stacks that
+    ; do not fit there go to the regular storage tabs.
     Local $before=AddOns_GetEmptyInventorySlotCount()
     For $i=0 To 4
         If $perUnit[$i]=0 Then ContinueLoop
+        Supply_DepositMatStorage(Supply_MatModel($i))
         AddOns_DepositItemsToStorage(Supply_MatModel($i),-1,1,True,False)
     Next
-    Sleep(300)
+    Sleep(200)
     Local $after=AddOns_GetEmptyInventorySlotCount()
-    If $after>$before Then AddOns_Out("[SUPPLY] Moved full material stacks to storage ("&($after-$before)&" bag slot(s) freed)")
+    If $after>$before Then AddOns_Out("[SUPPLY] Moved materials to storage ("&($after-$before)&" bag slot(s) freed)")
     Return $after>$before
 EndFunc
 ; Buy one 10-unit lot of material $i at Shad. Returns the price paid, 0 to stop buying.
@@ -585,12 +673,8 @@ Func Supply_CraftBulk($item, $count)
         For $i=0 To 4
             If $need[$i]=0 Then ContinueLoop
             Local $short=$need[$i]*$want-Supply_BagCount(Supply_MatModel($i))
-            If $short>0 And AddOns_GetStorageItemCountbyModelID(Supply_MatModel($i),False)>0 Then
-                AddOns_WithdrawItemsFromStorage(Supply_MatModel($i),-1,$short)
-                $moved=True
-            EndIf
+            If $short>0 And Supply_WithdrawMat(Supply_MatModel($i),$short)>0 Then $moved=True
         Next
-        If $moved Then Sleep(300)
         ; Craft only what the bags can cover.
         Local $k=$want
         For $i=0 To 4
@@ -616,14 +700,15 @@ Func Supply_CraftBulk($item, $count)
             If Not Supply_Talk($npc) Then ExitLoop
         EndIf
         Local $before=Supply_Stock($item)
+        Supply_PaceTrade()
         If Not Merchant_CraftItem($model,$GC_I_SUPPLY_CRAFT_FEE,$recipe,$k) Then
             AddOns_Out("[SUPPLY] Craft request for "&$k&" "&$item&" was refused; stopping after "&$made&" craft(s)")
             ExitLoop
         EndIf
         Local $wait=TimerInit()
         Do
-            Sleep(150)
-        Until Supply_Stock($item)>=$before+$k Or TimerDiff($wait)>5000
+            Sleep(10)
+        Until Supply_Stock($item)>=$before+$k Or TimerDiff($wait)>3000
         Local $got=Supply_Stock($item)-$before
         If $got<=0 Then
             AddOns_Out("[SUPPLY] Craft of "&$item&" did not produce anything; stopping after "&$made&" craft(s)")
@@ -633,6 +718,32 @@ Func Supply_CraftBulk($item, $count)
     WEnd
     If $made>0 Then AddOns_Out("[SUPPLY] Crafted "&$made&" "&$item&" (stock "&$startStock&" -> "&Supply_Stock($item)&")")
     Return $made
+EndFunc
+; Share live trader prices with Encounter Hub through Config\market.prices.ini. All bots
+; write the same file, at most once a minute (judged by the file's last write time).
+; Pass 0 for any price not observed; prices per 10 for materials, per ecto for Argus.
+Func Supply_PublishPrices($bones, $fibres, $dust, $feathers, $iron, $ecto)
+    Local $path=@ScriptDir&"\Config\market.prices.ini"
+    If FileExists($path) Then
+        Local $t=FileGetTime($path,0,1)
+        If StringLen($t)=14 Then
+            Local $stamp=StringLeft($t,4)&"/"&StringMid($t,5,2)&"/"&StringMid($t,7,2)&" "&StringMid($t,9,2)&":"&StringMid($t,11,2)&":"&StringMid($t,13,2)
+            If _DateDiff("s",$stamp,_NowCalc())<60 Then Return False
+        EndIf
+    EndIf
+    Local $keys[6]=["Bones","PlantFibres","Dust","Feathers","Iron","Ecto"]
+    Local $vals[6]=[$bones,$fibres,$dust,$feathers,$iron,$ecto]
+    Local $any=False
+    For $i=0 To 5
+        If $vals[$i]>0 And $vals[$i]<100000000 Then
+            IniWrite($path,"Market",$keys[$i],$vals[$i])
+            $any=True
+        EndIf
+    Next
+    If Not $any Then Return False
+    IniWrite($path,"Market","Updated",_NowCalc())
+    IniWrite($path,"Market","Source",Supply_CharacterName())
+    Return True
 EndFunc
 Func Supply_Produce($profile)
     Local $items=Supply_ProfileItems($profile)
@@ -667,6 +778,7 @@ Func Supply_Produce($profile)
             $outOfStock=True
         EndIf
     Next
+    Supply_PublishPrices($lotPrice[0],$lotPrice[1],$lotPrice[2],$lotPrice[3],$lotPrice[4],0)
     Local $budget=Item_GetInventoryInfo("GoldCharacter")+Item_GetInventoryInfo("GoldStorage")
     Local $afford=0
     While $afford<$GC_I_SUPPLY_MAX_UNITS And Supply_PlanCost($afford+1,$perUnit,$owned,$lotPrice,$itemsPerUnit)<=$budget
@@ -795,8 +907,9 @@ Func Supply_Produce($profile)
     AddOns_Out("[SUPPLY] Production finished: "&$total&" item(s) crafted")
     Return True
 EndFunc
-; Put leftover crafting materials and crafted supplies into storage. Materials go to the
-; regular storage tabs (not material storage) so the next supply run can see and withdraw them.
+; Put leftover crafting materials and crafted supplies into storage: materials into the
+; material storage tab (regular tabs if that is full), crafted supplies into the regular tabs.
+; The next supply run counts and withdraws materials from both.
 Func Supply_CleanInventory()
     Local $models[9]=[$GC_I_MODELID_BONES,$GC_I_MODELID_PLANT_FIBRES,$GC_I_MODELID_DUST,$GC_I_MODELID_FEATHERS,$GC_I_MODELID_IRON, _
         $GC_I_SUPPLY_RES_SCROLL,$GC_I_MODELID_ESSENCE_OF_CELERITY,$GC_I_MODELID_GRAIL_OF_MIGHT,$GC_I_MODELID_ARMOR_OF_SALVATION]
@@ -805,7 +918,8 @@ Func Supply_CleanInventory()
     For $i=0 To 8
         Local $before=Supply_Count($models[$i])
         If $before=0 Then ContinueLoop
-        AddOns_DepositItemsToStorage($models[$i],-1,-1,True,False)
+        If $i<=4 Then Supply_DepositMatStorage($models[$i])
+        If Supply_Count($models[$i])>0 Then AddOns_DepositItemsToStorage($models[$i],-1,-1,True,False)
         Local $t=TimerInit()
         While Supply_Count($models[$i])>0 And TimerDiff($t)<1500
             Sleep(50)

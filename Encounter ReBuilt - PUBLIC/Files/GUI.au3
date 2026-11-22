@@ -947,6 +947,18 @@ EndFunc   ;==>GUI_UpdateStatistics
 ; Related........: Launch_LaunchAccountFromINI, Core_Initialize, Launch_AllocateGridSlot, Launch_MoveWindowToGridSlot, _
 ;                  PreGame_Ptr, PreGame_ChosenCharacter, PreGame_CharName, Map_WaitMapLoading, ControlSend
 ; ===============================================================================================================================
+; Close any Gw.exe started by this bot (used between start retries).
+Func GUI_CloseOwnedGameClients()
+    Local $l_av_ProcessList = ProcessList("Gw.exe")
+    For $i = 1 To $l_av_ProcessList[0][0]
+        Local $l_i_PID = $l_av_ProcessList[$i][1]
+        If $l_i_PID <= 0 Then ContinueLoop
+        Local $l_i_PPID = _WinAPI_GetParentProcess($l_i_PID)
+        If $l_i_PPID = 0 Or @error Then ContinueLoop
+        If $l_i_PPID = @AutoItPID Then ProcessClose($l_i_PID)
+    Next
+EndFunc
+
 Func GUI_StartBot($a_s_Character, $a_b_Restart = False)
     If Not $a_b_Restart Then AddOns_InitLog(@ScriptDir & "\Log\" & $a_s_Character & ".log")
 
@@ -1401,7 +1413,23 @@ Func GUI_Main_OnStart()
 
     Sleep(10)
 
-    If GUI_StartBot($l_s_Character) Then
+    ; Retry transient login failures (GwAu3 init, character select, map load) up to 3
+    ; attempts: close this bot's own game client and wait for the server session to end.
+    ; A missing or unplayable Gw.exe (ERR:1) is not retried.
+    Local $l_b_Started = False, $l_i_StartErr = 0
+    For $l_i_Attempt = 1 To 3
+        If GUI_StartBot($l_s_Character, $l_i_Attempt > 1) Then
+            $l_b_Started = True
+            ExitLoop
+        EndIf
+        $l_i_StartErr = @error
+        If $l_i_Attempt = 3 Or ($l_i_StartErr <> 2 And $l_i_StartErr <> 6 And $l_i_StartErr <> 7) Then ExitLoop
+        AddOns_Out("[ERR] Start of bot failed (ERR:" & $l_i_StartErr & "); retrying in 30 seconds (attempt " & ($l_i_Attempt + 1) & " of 3)")
+        GUI_CloseOwnedGameClients()
+        Sleep(30000)
+    Next
+
+    If $l_b_Started Then
         $g_b_BotInitialized = True
         $g_b_PauseRequested = False
         $g_b_ResumeRequested = False
@@ -1415,8 +1443,7 @@ Func GUI_Main_OnStart()
         GUI_RenderingCheck()
         GUI_SetBotState($GC_I_BOTSTATE_RUN)
     Else
-        Local $l_i_Err = @error
-        AddOns_Out("[ERR] Start of bot failed (ERR:" & $l_i_Err & ")")
+        AddOns_Out("[ERR] Start of bot failed (ERR:" & $l_i_StartErr & ")")
 
         GUICtrlSetData($g_i_CtrlID_Button_Start, "Start")
 
