@@ -12,3 +12,6 @@ dist/
 build/
 *.spec
 taco.ico
+
+# Release archives are built by CI, not committed
+*.zip
