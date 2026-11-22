@@ -15,7 +15,7 @@ bot_sources={
  'bot/Encounter ReBuilt/Encounter_ReBuilt.au3':'Encounter ReBuilt - PUBLIC/Encounter_ReBuilt.au3',
  'bot/Encounter ReBuilt/Encounter_ReBuilt.exe':'Encounter ReBuilt - PUBLIC/Encounter_ReBuilt.exe',
 }
-for name in ('AddOns.au3','GUI.au3','ItemFilter.au3','Launch.au3','Pathing.au3','Security.au3','SupplyManager.au3','_Includes.au3','FiberFarm.au3'):
+for name in ('AddOns.au3','GUI.au3','ItemFilter.au3','Launch.au3','Pathing.au3','Security.au3','SupplyManager.au3','_Includes.au3','FiberFarm.au3','VaettirFarm.au3'):
  bot_sources['bot/Encounter ReBuilt/Files/'+name]='Encounter ReBuilt - PUBLIC/Files/'+name
 for name in ('BannerGeneral.jpg','BannerLootConfig.jpg','BannerTradeConfig.jpg','Encounter.ico'):
  bot_sources['bot/Encounter ReBuilt/Images/'+name]='Encounter ReBuilt - PUBLIC/Images/'+name

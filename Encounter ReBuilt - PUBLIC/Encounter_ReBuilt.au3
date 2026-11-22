@@ -2096,6 +2096,7 @@ Func CreatePickupSet()
     EndIf
 
     If Farm_IsFiber() Then Fiber_AddPickups($l_m_PickUpSet)
+    If Farm_IsVaettir() Then Vaettir_AddPickups($l_m_PickUpSet)
 
     Return $l_m_PickUpSet
 EndFunc
@@ -3739,11 +3740,14 @@ Func Main()
 
         Switch GUI_GetBotState()
 			Case $GC_I_BOTSTATE_RUN
-				If Farm_IsFiber() Then
-					Fiber_Main()
-				Else
-					Quest18()
-				EndIf
+				Switch Farm_Name()
+					Case "Fiber"
+						Fiber_Main()
+					Case "Vaettir"
+						Vaettir_Main()
+					Case Else
+						Quest18()
+				EndSwitch
                 ; Manual supply requests outrank normal pause handling and automatic supply checks.
                 If Supply_CheckManualRequest() Then
                     $g_b_ForcePauseRequested=False

@@ -8,3 +8,4 @@
 #include "Security.au3"
 #include "SupplyManager.au3"
 #include "FiberFarm.au3"
+#include "VaettirFarm.au3"

@@ -170,6 +170,19 @@ class QtDesktop(unittest.TestCase):
         self.assertEqual(supply['Fiber']['Threshold'],'6500')
         self.assertEqual(w.character_table.rowCount(),2)
 
+    def test_vaettir_farm_plays_the_accounts_assassin(self):
+        import configparser
+        w=self.window;key='Character One'
+        w.row_widgets[key]['farm'].setCurrentText('Vaettir')
+        self.assertIn('No Assassin',w.tree.set(key,'character'))
+        w.set_profession('Character One','Assassin')
+        self.assertEqual(w.row_character(key),'Character One')
+        w.add_character('Ranger Two','Ranger',key)
+        self.assertEqual(w.row_character(key,'Fiber'),'Ranger Two')
+        farms=configparser.ConfigParser();farms.optionxform=str;farms.read(w.exe.parent/'Config'/'farms.ini')
+        # One character serves Ministerial and Vaettir; the selected farm wins.
+        self.assertEqual(dict(farms['Farms']),{'Character One':'Vaettir','Ranger Two':'Fiber'})
+
     def test_changing_profession_changes_the_farm_character(self):
         w=self.window;key='Character One'
         w.add_character('Ranger Two','Warrior',key)

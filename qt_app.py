@@ -1901,11 +1901,11 @@ COLUMNS=('check','account','character','farm','status','command','render','ontop
 CAPTIONS=('Select','Account','Character','Farm','Bot Status','Command','Disable Rendering','Always on Top','Pause','Resume','Trade','Stop','Launch','Buy Cons','Automatically Craft','Manually Craft','Put in Storage')
 FLEXIBLE=('character','status','command')
 # Farm routines the bot can run. The bot reads each character's farm from Config\farms.ini.
-FARMS=('Ministerial','Fiber')
+FARMS=('Ministerial','Fiber','Vaettir')
 PROFESSIONS=('Unknown','Warrior','Ranger','Monk','Necromancer','Mesmer','Elementalist','Assassin','Ritualist','Paragon','Dervish')
 # Farms that need a specific profession pick that account's character of that profession (Character Manager).
 # Ministerial runs on the account's main character.
-FARM_PROFESSION={'Fiber':'Ranger'}
+FARM_PROFESSION={'Fiber':'Ranger','Vaettir':'Assassin'}
 CHARACTER_NAME=re.compile(r"[A-Za-z][A-Za-z ']{1,17}[A-Za-z]")
 INI_HEADER=re.compile(r'^\s*\[([^\]\r\n]+)\]\s*$')
 
@@ -2308,7 +2308,7 @@ class Desktop(QMainWindow):
         page=QWidget();self.tabs.addTab(page,'Characters')
         layout=QVBoxLayout(page);layout.setContentsMargins(16,16,16,16);layout.setSpacing(12)
         intro=QLabel('Characters available to each account. Farms choose their character from this list: '
-                     'Fiber plays the account\'s Ranger, Ministerial plays the account\'s main character. '
+                     'Fiber plays the account\'s Ranger, Vaettir its Assassin, Ministerial its main character. '
                      'Adding a character copies that account\'s login in characters.ini.')
         intro.setWordWrap(True);layout.addWidget(intro)
         form=QHBoxLayout();layout.addLayout(form)
@@ -2604,7 +2604,7 @@ class Desktop(QMainWindow):
                 required={'app_main.py','hub.py','Launch Hub.vbs','Launch Hub.cmd','update.json','bot/Encounter ReBuilt/Encounter_ReBuilt.au3','bot/Encounter ReBuilt/Encounter_ReBuilt.exe'}
                 allowed=required|{'qt_app.py','qt_style.py','supervisor.py','supply_manager.py','requirements.txt','bundle.json','desktop-bundle.json','taco.ico',
                     'bot/Encounter ReBuilt/Files/AddOns.au3','bot/Encounter ReBuilt/Files/GUI.au3','bot/Encounter ReBuilt/Files/ItemFilter.au3','bot/Encounter ReBuilt/Files/Launch.au3',
-                    'bot/Encounter ReBuilt/Files/Pathing.au3','bot/Encounter ReBuilt/Files/Security.au3','bot/Encounter ReBuilt/Files/SupplyManager.au3','bot/Encounter ReBuilt/Files/_Includes.au3','bot/Encounter ReBuilt/Files/FiberFarm.au3',
+                    'bot/Encounter ReBuilt/Files/Pathing.au3','bot/Encounter ReBuilt/Files/Security.au3','bot/Encounter ReBuilt/Files/SupplyManager.au3','bot/Encounter ReBuilt/Files/_Includes.au3','bot/Encounter ReBuilt/Files/FiberFarm.au3','bot/Encounter ReBuilt/Files/VaettirFarm.au3',
                     'bot/Encounter ReBuilt/Images/BannerGeneral.jpg','bot/Encounter ReBuilt/Images/BannerLootConfig.jpg','bot/Encounter ReBuilt/Images/BannerTradeConfig.jpg','bot/Encounter ReBuilt/Images/Encounter.ico'}
                 if manifest.get('format')!=1 or not required.issubset(manifest.get('files',{})) or not set(manifest.get('files',{})).issubset(allowed):
                     raise ValueError('GitHub returned an unsupported desktop update manifest')

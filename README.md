@@ -31,6 +31,14 @@ The Supply Manager window holds the global Buy Cons settings that every farm wor
 
 Select **Fiber** in the Farm column and a Ranger (R/A) in Character. The character needs the quest "A New Escort"; the bot recruits Pyre Fierceshot and loads both builds itself. It farms Dragon Moss in Drazach Thicket from Saint Anjeka's Shrine (route ported from gw-suite's fiber bot), salvages dragon roots during runs, and cleans its inventory at the normal merchant when bags fill or salvage kits run out. When the stored fiber (bags, storage and the material tab) reaches the Supply Manager's fiber threshold (default 6,500), it travels to Embark Beach, buys the bones missing to match the fiber at Shad (stored bones are used first), crafts Scrolls of Resurrection at Alcus Nailbiter, stores the scrolls and leftovers, and resumes. Bones are bought and crafted in rounds sized to the free bag slots, and a gold reserve (default 30,000) is never spent. The global gold trigger above applies to the Fiber farm too. The farm lives in `Encounter ReBuilt - PUBLIC/Files/FiberFarm.au3`.
 
+## Vaettir farm
+
+Select **Vaettir** in the Farm column; it plays the account's Assassin from the Characters tab. The route is ported from gw-suite's Vaettir bot: from Longeye's Ledge through Bjora Marches into Jaga Moraine, taking the Norn blessing, pulling the left and right groups while staying alive (Shadow Form, Shroud of Distress, Way of Perfection, Channeling, Heart of Shadow), balling them and killing with Wastrel's Demise and Arcane Echo, then rezoning through Bjora. Build `OwVUI2h5lPP8Id2BkAiAvpLBTAA` (A/Me). It picks up gold items, lockpicks, glacial stones, black dye, event drops and weapons to salvage; mesmer tomes and Deeprunner's map pieces can be enabled with `[Vaettir] PickUpMesmerTomes=true` / `PickUpMapPieces=true` in `Config\supply.ini`. The global gold trigger applies here too. The farm lives in `Encounter ReBuilt - PUBLIC/Files/VaettirFarm.au3`.
+
+## Rare weapons (Fiber and Vaettir)
+
+Both farms salvage non-gold weapons for materials and never sell or salvage: gold dual-vamp weapons, gw-suite's perfect shields, and every shield the Encounter farm's item filter keeps (its shield mod table on a rare skin, a req 9 shield, or a max-armor req 8 / req 7 shield). Those are moved to storage.
+
 ## Development
 
 Install `requirements.txt` for source development, run `hub.py`, and use `python -m unittest discover -s tests -v`. To publish app changes, bump VERSION in app_main.py and push to `main`. GitHub Actions regenerates all three update manifests, builds the Windows desktop ZIP, and publishes a versioned GitHub Release with a SHA-256 file. Each version tag is published only once; ordinary commits without a version bump do not replace an existing release. Runtime source updates do not change the packaged Python/Qt runtime; changes to runtime dependencies need a new executable build.

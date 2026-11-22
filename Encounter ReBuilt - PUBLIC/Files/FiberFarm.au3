@@ -44,8 +44,12 @@ Global $g_i_FiberScrollsCrafted = 0
 
 #Region Farm selection and settings
 Func Farm_Name()
-	Local $l_s_Farm = IniRead($GC_S_FARM_INI, "Farms", Supply_CharacterName(), "Ministerial")
-	If StringLower($l_s_Farm) = "fiber" Then Return "Fiber"
+	Switch StringLower(IniRead($GC_S_FARM_INI, "Farms", Supply_CharacterName(), "Ministerial"))
+		Case "fiber"
+			Return "Fiber"
+		Case "vaettir"
+			Return "Vaettir"
+	EndSwitch
 	Return "Ministerial"
 EndFunc
 
@@ -53,10 +57,31 @@ Func Farm_IsFiber()
 	Return Farm_Name() = "Fiber"
 EndFunc
 
+Func Farm_IsVaettir()
+	Return Farm_Name() = "Vaettir"
+EndFunc
+
+; Farms that keep dual vamp golds / perfect shields and salvage loot (gw-suite rules).
+Func Farm_KeepsRares()
+	Local $l_s_Farm = Farm_Name()
+	Return $l_s_Farm = "Fiber" Or $l_s_Farm = "Vaettir"
+EndFunc
+
 ; Setup function for the selected farm (start, restart, resume).
 Func Farm_SetupFunc()
-	If Farm_IsFiber() Then Return "Fiber_Setup"
+	Switch Farm_Name()
+		Case "Fiber"
+			Return "Fiber_Setup"
+		Case "Vaettir"
+			Return "Vaettir_Setup"
+	EndSwitch
 	Return "SetupEncounter"
+EndFunc
+
+; A skill is ready when its recharge time is zero. (Skill info "IsRecharged" only accepts a zero or exactly
+; current timestamp, so it can report a recharged skill as still recharging.)
+Func Farm_IsRecharged($a_i_Slot)
+	Return Skill_GetSkillbarInfo($a_i_Slot, "RechargeTime") = 0
 EndFunc
 
 Func Fiber_Setting($a_s_Key, $a_v_Default)
@@ -200,9 +225,9 @@ EndFunc
 
 ; Use a skill and wait until it was really used (it goes on recharge), then its aftercast; like gw-suite
 ; UseSkillEx. AddOns_UseSkillEx returns before the cast starts, which let later skills fire too early.
-Func Fiber_UseSkill($a_i_Slot, $a_v_Target = -2, $a_i_Timeout = 3000, $a_b_Report = False)
+Func Farm_UseSkill($a_i_Slot, $a_v_Target = -2, $a_i_Timeout = 3000, $a_b_Report = False)
 	If AddOns_GetIsDead(-2) Then Return Fiber_SkillFailed($a_i_Slot, "player is dead", $a_b_Report)
-	If Not AddOns_GetIsRecharged($a_i_Slot) Then Return Fiber_SkillFailed($a_i_Slot, "still recharging", $a_b_Report)
+	If Not Farm_IsRecharged($a_i_Slot) Then Return Fiber_SkillFailed($a_i_Slot, "still recharging", $a_b_Report)
 	Local $l_i_SkillID = Skill_GetSkillbarInfo($a_i_Slot, "SkillID")
 	Local $l_f_Energy = AddOns_GetCurrentEnergy(-2), $l_i_Req = AddOns_GetEnergyReq($l_i_SkillID)
 	If $l_f_Energy < $l_i_Req Then Return Fiber_SkillFailed($a_i_Slot, "energy " & Round($l_f_Energy) & " < " & $l_i_Req, $a_b_Report)
@@ -216,8 +241,8 @@ Func Fiber_UseSkill($a_i_Slot, $a_v_Target = -2, $a_i_Timeout = 3000, $a_b_Repor
 	Do
 		Sleep(50)
 		If AddOns_GetIsDead(-2) Then Return Fiber_SkillFailed($a_i_Slot, "died while casting", $a_b_Report)
-	Until Not AddOns_GetIsRecharged($a_i_Slot) Or TimerDiff($l_h_Timer) > $a_i_Timeout
-	If AddOns_GetIsRecharged($a_i_Slot) Then
+	Until Not Farm_IsRecharged($a_i_Slot) Or TimerDiff($l_h_Timer) > $a_i_Timeout
+	If Farm_IsRecharged($a_i_Slot) Then
 		Local $l_s_Where = ""
 		If $l_i_TargetID <> $l_i_MyID Then $l_s_Where = " (target " & $l_i_TargetID & " at " & Round(AddOns_GetDistance($l_i_TargetID)) & ", allegiance " & Agent_GetAgentInfo($l_i_TargetID, "Allegiance") & ")"
 		Return Fiber_SkillFailed($a_i_Slot, "not cast within " & $a_i_Timeout & "ms, skill " & $l_i_SkillID & $l_s_Where, $a_b_Report)
@@ -256,11 +281,11 @@ Func Fiber_MoveRun($a_f_X, $a_f_Y, $a_b_UseDash = False, $a_b_UseZojuns = False)
 	Do
 		Other_PingSleep(200)
 		If AddOns_GetIsDead(-2) Or Map_GetMapID() <> $GC_I_FIBER_EXPLORABLE Then Return False
-		If $a_b_UseDash And AddOns_GetIsRecharged($GC_I_FIBER_SKILL_DASH) Then
-			Fiber_UseSkill($GC_I_FIBER_SKILL_DASH)
-		ElseIf $a_b_UseZojuns And AddOns_GetIsRecharged($GC_I_FIBER_SKILL_ZOJUNS) _
+		If $a_b_UseDash And Farm_IsRecharged($GC_I_FIBER_SKILL_DASH) Then
+			Farm_UseSkill($GC_I_FIBER_SKILL_DASH)
+		ElseIf $a_b_UseZojuns And Farm_IsRecharged($GC_I_FIBER_SKILL_ZOJUNS) _
 				And Not AddOns_GetHasEffect($GC_I_SKILL_ID_DASH) And Not AddOns_GetHasEffect($GC_I_SKILL_ID_ZOJUNS_HASTE) Then
-			Fiber_UseSkill($GC_I_FIBER_SKILL_ZOJUNS)
+			Farm_UseSkill($GC_I_FIBER_SKILL_ZOJUNS)
 		EndIf
 		If Not AddOns_GetIsMoving(-2) Then
 			Map_Move($a_f_X, $a_f_Y, 0)
@@ -284,13 +309,13 @@ Func Fiber_Combat()
 	; Return shadow-steps to the escort NPC; the next skills must wait until it was used.
 	Local $l_p_Escort = Fiber_FindEscort()
 	If $l_p_Escort = 0 Then AddOns_Out("[WARN] Escort NPC not found for Return (is 'A New Escort' in the quest log?)")
-	If Not Fiber_UseSkill($GC_I_FIBER_SKILL_RETURN, $l_p_Escort, 3000, True) Then
+	If Not Farm_UseSkill($GC_I_FIBER_SKILL_RETURN, $l_p_Escort, 3000, True) Then
 		Sleep(500)
 		$l_p_Escort = Fiber_FindEscort()
-		If Not Fiber_UseSkill($GC_I_FIBER_SKILL_RETURN, $l_p_Escort, 3000, True) Then AddOns_Out("[WARN] Return was not used")
+		If Not Farm_UseSkill($GC_I_FIBER_SKILL_RETURN, $l_p_Escort, 3000, True) Then AddOns_Out("[WARN] Return was not used")
 	EndIf
-	Fiber_UseSkill($GC_I_FIBER_SKILL_SHROUD)
-	Fiber_UseSkill($GC_I_FIBER_SKILL_SHADOW_FORM)
+	Farm_UseSkill($GC_I_FIBER_SKILL_SHROUD)
+	Farm_UseSkill($GC_I_FIBER_SKILL_SHADOW_FORM)
 	Party_CommandHero($GC_I_FIBER_PYRE, -7924, 18281)
 
 	Fiber_MoveRun(-7086, 17979, True)
@@ -302,7 +327,7 @@ Func Fiber_Combat()
 	Fiber_MoveRun(-6111, 17160)
 	AddOns_MoveTo(-6111, 17160) ; Shadow of Haste spot
 	Sleep(500)
-	Fiber_UseSkill($GC_I_FIBER_SKILL_SHADOW_HASTE)
+	Farm_UseSkill($GC_I_FIBER_SKILL_SHADOW_HASTE)
 	Fiber_MoveRun(-6604, 18585)
 	AddOns_MoveTo(-6604, 18585) ; cancels Shadow of Haste
 
@@ -312,16 +337,16 @@ Func Fiber_Combat()
 	Local $l_h_Deadlock = TimerInit()
 	Do
 		Sleep(100)
-	Until AddOns_GetIsRecharged($GC_I_FIBER_SKILL_SHADOW_FORM) Or AddOns_GetIsDead(-2) Or TimerDiff($l_h_Deadlock) > 30000
-	Fiber_UseSkill($GC_I_FIBER_SKILL_SHADOW_FORM)
-	Fiber_UseSkill($GC_I_FIBER_SKILL_WHIRLING)
+	Until Farm_IsRecharged($GC_I_FIBER_SKILL_SHADOW_FORM) Or AddOns_GetIsDead(-2) Or TimerDiff($l_h_Deadlock) > 30000
+	Farm_UseSkill($GC_I_FIBER_SKILL_SHADOW_FORM)
+	Farm_UseSkill($GC_I_FIBER_SKILL_WHIRLING)
 
 	$l_h_Deadlock = TimerInit()
 	Do
 		Sleep(250)
 		If AddOns_GetIsDead(-2) Then ExitLoop
 	Until AddOns_GetCurrentEnergy(-2) > 15 Or TimerDiff($l_h_Deadlock) > 5000
-	Fiber_UseSkill($GC_I_FIBER_SKILL_RADIANT)
+	Farm_UseSkill($GC_I_FIBER_SKILL_RADIANT)
 
 	; Wait for the balled-up moss to die, salvaging roots while waiting.
 	$l_h_Deadlock = TimerInit()
@@ -380,18 +405,36 @@ Func Fiber_IsSalvageWeaponType($a_i_Type)
 	Return False
 EndFunc
 
-; Weapons that are always kept (stored, never sold or salvaged), from gw-suite: dual vamp golds and
-; perfect shields. Everything else follows the bot's normal item filter.
+; Weapons that are always kept (stored, never sold or salvaged): gw-suite dual vamp golds and perfect
+; shields, plus every shield the Encounter farm's filter keeps. Everything else follows the item filter.
 Func Fiber_IsKeeper($a_p_Item)
 	If $a_p_Item = 0 Then Return False
 	Local $l_i_Type = Memory_Read($a_p_Item + 0x20, "byte")
 	If Not Fiber_IsSalvageWeaponType($l_i_Type) And $l_i_Type <> $GC_I_TYPE_SCYTHE And $l_i_Type <> $GC_I_TYPE_SPEAR Then Return False
+	; Shields the Encounter (Ministerial) farm keeps, any rarity: its shield mod table + req/max rules.
+	If $l_i_Type = $GC_I_TYPE_SHIELD And Fiber_IsEncounterShieldKeeper($a_p_Item) Then Return True
 	If Item_GetItemInfoByPtr($a_p_Item, "Rarity") <> $GC_I_RARITY_GOLD Then Return False
 	Local $l_s_Mods = StringUpper(Item_GetModStruct($a_p_Item))
 	If $l_s_Mods = "" Then Return False
 	; Dual vamp: +15% damage and vampiric strike (15^ or 14^)
 	If StringInStr($l_s_Mods, "0F0038220100E820") Or StringInStr($l_s_Mods, "0E0038220100E820") Then Return True
 	If $l_i_Type = $GC_I_TYPE_SHIELD Then Return Fiber_IsPerfectShield($a_p_Item, $l_s_Mods)
+	Return False
+EndFunc
+
+; The shield rule of ItemFilter_CanSellToMerchant_OS (Encounter farm): a mod combination from
+; $GC_AS2_SHIELD_PATTERNS on a rare skin, a req 9 shield, or a max-armor req 8 / req 7 shield.
+Func Fiber_IsEncounterShieldKeeper($a_p_Item)
+	If Not ItemFilter_HasPerfectMods($a_p_Item, $GC_I_TYPE_SHIELD) Then Return False
+	If ItemFilter_IsRareSkin(Memory_Read($a_p_Item + 0x2C, "dword")) Then Return True
+	Switch Item_GetItemReq($a_p_Item)
+		Case 9
+			Return True
+		Case 8
+			Return ItemFilter_IsMaxReq8($a_p_Item, $GC_I_TYPE_SHIELD)
+		Case 7
+			Return ItemFilter_IsMaxReq7($a_p_Item, $GC_I_TYPE_SHIELD)
+	EndSwitch
 	Return False
 EndFunc
 
@@ -461,7 +504,7 @@ Func Fiber_SalvageOne($a_b_Weapons = False)
 	Local $l_i_Weapon = 0
 	For $i = 0 To UBound($l_av2_Inv, $UBOUND_ROWS) - 1
 		Local $l_i_Model = $l_av2_Inv[$i][$GC_I_INVENTORY_MODELID]
-		If $l_i_Model = $GC_I_MODELID_DRAGON_ROOT Or $l_i_Model = $GC_I_MODELID_SPIRITWOOD_PLANK Then
+		If $l_i_Model = $GC_I_MODELID_DRAGON_ROOT Or $l_i_Model = $GC_I_MODELID_SPIRITWOOD_PLANK Or $l_i_Model = $GC_I_MODELID_GLACIAL_STONE Then
 			If Not Item_SalvageItem($l_av2_Inv[$i][$GC_I_INVENTORY_ITEMID], "Standard", "Materials") Then Return False
 			Other_PingSleep(600)
 			Return True

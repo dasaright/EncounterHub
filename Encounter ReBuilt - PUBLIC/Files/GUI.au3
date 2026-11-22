@@ -1199,7 +1199,7 @@ EndFunc
 ; Related........: AddOns_Out, GUI_UpdateStatistics, Inventory
 ; ===============================================================================================================================
 Func GUI_EnterPause()
-    If Farm_IsFiber() Then
+    If Farm_KeepsRares() Then
         Fiber_StoreMaterials()
     Else
         Inventory(True)
