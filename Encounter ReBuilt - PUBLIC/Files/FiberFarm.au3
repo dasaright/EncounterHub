@@ -307,14 +307,9 @@ Func Fiber_Combat()
 	Skill_UseHeroSkill($GC_I_FIBER_PYRE, 4) ; Quickening Zephyr
 	Skill_UseHeroSkill($GC_I_FIBER_PYRE, 2) ; Shadow of Haste
 	Skill_UseSkill($GC_I_FIBER_SKILL_DASH)
-	; Return shadow-steps to the escort NPC; the next skills must wait until it was used.
-	Local $l_p_Escort = Fiber_FindEscort()
-	If $l_p_Escort = 0 Then AddOns_Out("[WARN] Escort NPC not found for Return (is 'A New Escort' in the quest log?)")
-	If Not Farm_UseSkill($GC_I_FIBER_SKILL_RETURN, $l_p_Escort, 3000, True) Then
-		Sleep(500)
-		$l_p_Escort = Fiber_FindEscort()
-		If Not Farm_UseSkill($GC_I_FIBER_SKILL_RETURN, $l_p_Escort, 3000, True) Then AddOns_Out("[WARN] Return was not used")
-	EndIf
+	; Return is queued and fires once the character has walked into range of the escort NPC, which takes
+	; a few seconds; wait for it (up to 10 s) so Shroud and Shadow Form are not cast early.
+	Farm_UseSkill($GC_I_FIBER_SKILL_RETURN, Fiber_FindEscort(), 10000)
 	Farm_UseSkill($GC_I_FIBER_SKILL_SHROUD)
 	Farm_UseSkill($GC_I_FIBER_SKILL_SHADOW_FORM)
 	Party_CommandHero($GC_I_FIBER_PYRE, -7924, 18281)
