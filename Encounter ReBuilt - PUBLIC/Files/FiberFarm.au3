@@ -26,6 +26,7 @@ Global Const $GC_I_FIBER_EXPLORABLE = $GC_I_MAP_ID_DRAZACH_THICKET
 Global Const $GC_S_FIBER_BUILD_PLAYER = "OgcTcZ88ZSgZCSn5AiVK0R4wtEA"
 Global Const $GC_S_FIBER_BUILD_PYRE = "OgcTcZ885ZCG6eObHAAAAAAAAA"
 Global Const $GC_I_FIBER_SALVAGE_KITS = 3      ; kept in the bags (dragon roots / spiritwood are salvaged during runs)
+Global Const $GC_I_FIBER_ID_KITS = 2            ; superior ID kits kept in the bags (gw-suite fiber default)
 Global Const $GC_I_FIBER_FREE_SLOTS_MIN = 5     ; clean up the inventory at or below this many free slots
 Global Const $GC_I_FIBER_PYRE = 1               ; hero number of Pyre Fierceshot
 
@@ -496,8 +497,10 @@ EndFunc
 #EndRegion Run
 
 #Region Inventory
-; Salvage one item for materials: dragon roots / spiritwood first, then non-gold weapons of the salvage
-; types (gold items are left to the item filter / rare-weapon storage). Returns True when one was salvaged.
+; One salvage action (gw-suite SalvageOneThing): dragon roots / spiritwood / glacial stones first; with
+; $a_b_Weapons also weapons of the salvage types. Blue, purple and gold weapons are identified first, and
+; anything worth keeping (Fiber_IsKeeper, or kept by the Encounter item filter) is left for storage.
+; Returns True when something was identified or salvaged.
 Func Fiber_SalvageOne($a_b_Weapons = False)
 	If Supply_BagCount($GC_I_MODELID_SALVAGE_KIT) = 0 Then Return False
 	Local $l_av2_Inv = Item_GetInventoryArray()
@@ -509,15 +512,37 @@ Func Fiber_SalvageOne($a_b_Weapons = False)
 			Other_PingSleep(600)
 			Return True
 		EndIf
-		If $a_b_Weapons And $l_i_Weapon = 0 And Fiber_IsSalvageWeaponType($l_av2_Inv[$i][$GC_I_INVENTORY_ITEMTYPE]) _
-				And $l_av2_Inv[$i][$GC_I_INVENTORY_RARITY] <> $GC_I_RARITY_GOLD And Not Fiber_IsKeeper($l_av2_Inv[$i][$GC_I_INVENTORY_PTR]) Then
-			$l_i_Weapon = $l_av2_Inv[$i][$GC_I_INVENTORY_ITEMID]
+		If Not $a_b_Weapons Or $l_i_Weapon <> 0 Then ContinueLoop
+		If Not Fiber_IsSalvageWeaponType($l_av2_Inv[$i][$GC_I_INVENTORY_ITEMTYPE]) Then ContinueLoop
+		Local $l_p_Item = $l_av2_Inv[$i][$GC_I_INVENTORY_PTR]
+		If Memory_Read($l_p_Item + 0x4A, "byte") = 0 Then ContinueLoop ; not salvageable
+		If $l_av2_Inv[$i][$GC_I_INVENTORY_RARITY] <> $GC_I_RARITY_WHITE And Not Item_GetItemInfoByPtr($l_p_Item, "IsIdentified") Then
+			; Identify first (mods decide whether it is kept); one action per call.
+			If Not Fiber_HasIdKit() Then ContinueLoop
+			Item_IdentifyItem($l_av2_Inv[$i][$GC_I_INVENTORY_ITEMID], "Superior")
+			Other_PingSleep(250)
+			Return True
 		EndIf
+		If Fiber_ShouldKeepWeapon($l_p_Item, $l_av2_Inv[$i][$GC_I_INVENTORY_ITEMTYPE], $l_i_Model, $l_av2_Inv[$i][$GC_I_INVENTORY_VALUE]) Then ContinueLoop
+		$l_i_Weapon = $l_av2_Inv[$i][$GC_I_INVENTORY_ITEMID]
 	Next
 	If $l_i_Weapon = 0 Then Return False
 	If Not Item_SalvageItem($l_i_Weapon, "Standard", "Materials") Then Return False
 	Other_PingSleep(1000)
 	Return True
+EndFunc
+
+; Weapons that are not salvaged: the farms' rare rules, or anything the Encounter item filter keeps
+; (it would not sell it to the merchant).
+Func Fiber_ShouldKeepWeapon($a_p_Item, $a_i_Type, $a_i_Model, $a_i_Value)
+	If Fiber_IsKeeper($a_p_Item) Then Return True
+	If $a_i_Value > 0 And Not ItemFilter_CanSellToMerchant_OS($a_p_Item, $a_i_Type, $a_i_Model, $a_i_Value) Then Return True
+	Return False
+EndFunc
+
+Func Fiber_HasIdKit()
+	Return Supply_BagCount($GC_I_MODELID_SUPERIOR_IDENTIFICATION_KIT) + Supply_BagCount($GC_I_MODELID_IDENTIFICATION_KIT) _
+		+ Supply_BagCount($GC_I_MODELID_INFINITE_IDENTIFICATION_KIT) > 0
 EndFunc
 
 ; Full material stacks to the material tab (then storage) after every run.
@@ -534,7 +559,8 @@ EndFunc
 
 Func Fiber_NeedsInventory()
 	If AddOns_GetEmptyInventorySlotCount() <= $GC_I_FIBER_FREE_SLOTS_MIN Then Return True
-	Return Supply_BagCount($GC_I_MODELID_SALVAGE_KIT) = 0
+	If Supply_BagCount($GC_I_MODELID_SALVAGE_KIT) = 0 Then Return True
+	Return Not Fiber_HasIdKit()
 EndFunc
 
 ; Identify / sell / store with the bot's normal rules, then top up salvage kits at the same merchant.
@@ -557,6 +583,23 @@ Func Fiber_Inventory()
 				WEnd
 			WEnd
 			AddOns_Out("[FIBER] Salvage kits: " & Supply_BagCount($GC_I_MODELID_SALVAGE_KIT))
+		EndIf
+	EndIf
+	If Supply_BagCount($GC_I_MODELID_SUPERIOR_IDENTIFICATION_KIT) < $GC_I_FIBER_ID_KITS Then
+		If Pathing_GoMerchant($l_i_Map) Then
+			Local $l_i_IdTries = 0
+			While Supply_BagCount($GC_I_MODELID_SUPERIOR_IDENTIFICATION_KIT) < $GC_I_FIBER_ID_KITS And $l_i_IdTries < $GC_I_FIBER_ID_KITS + 2
+				$l_i_IdTries += 1
+				If AddOns_GetEmptyInventorySlotCount() < 2 Then ExitLoop
+				Supply_KeepGold(1000)
+				Local $l_i_IdBefore = Supply_BagCount($GC_I_MODELID_SUPERIOR_IDENTIFICATION_KIT)
+				If Not Merchant_BuyItem($GC_I_MODELID_SUPERIOR_IDENTIFICATION_KIT, 1) Then ExitLoop
+				Local $l_h_IdTimer = TimerInit()
+				While Supply_BagCount($GC_I_MODELID_SUPERIOR_IDENTIFICATION_KIT) <= $l_i_IdBefore And TimerDiff($l_h_IdTimer) < 2000
+					Sleep(50)
+				WEnd
+			WEnd
+			AddOns_Out("[FIBER] Superior ID kits: " & Supply_BagCount($GC_I_MODELID_SUPERIOR_IDENTIFICATION_KIT))
 		EndIf
 	EndIf
 	Return True
