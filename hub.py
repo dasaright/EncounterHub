@@ -22,6 +22,35 @@ REPOSITORY = 'dasaright/EncounterHub'
 ROOT = Path(getattr(sys,'_MEIPASS',Path(sys.executable).resolve().parent)) if getattr(sys,'frozen',False) else Path(__file__).resolve().parent
 
 
+# Modules that Update Now replaces on disk. In the PyInstaller build these are also frozen
+# into the executable, and PyInstaller's importer prefers its frozen copies, so updated
+# files were never loaded. Prefer the files on disk when they exist.
+APP_MODULES = ('app_main', 'qt_app', 'qt_style', 'supervisor', 'supply_manager')
+
+
+class PreferUpdatedModules:
+    """Meta-path finder that loads APP_MODULES from ROOT/<name>.py before any frozen copy."""
+
+    def __init__(self, root):
+        self.root = Path(root)
+
+    def find_spec(self, name, path=None, target=None):
+        if name not in APP_MODULES:
+            return None
+        source = self.root / (name + '.py')
+        if not source.is_file():
+            return None
+        import importlib.util
+        return importlib.util.spec_from_file_location(name, source)
+
+
+def prefer_updated_modules(root=None):
+    finder = PreferUpdatedModules(ROOT if root is None else root)
+    if not any(isinstance(entry, PreferUpdatedModules) for entry in sys.meta_path):
+        sys.meta_path.insert(0, finder)
+    return finder
+
+
 def api(path):
     req = urllib.request.Request('https://api.github.com/repos/' + REPOSITORY + '/' + path,
                                  headers={'User-Agent': 'EncounterHub', 'Accept': 'application/vnd.github+json'})
@@ -120,6 +149,8 @@ def main():
         raise SystemExit('Encounter Hub requires Windows.')
     if elevate():
         return
+    if getattr(sys, 'frozen', False):
+        prefer_updated_modules()
     if '--supervisor' in sys.argv:
         import importlib
         importlib.import_module('supervisor').serve();return

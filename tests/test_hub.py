@@ -269,3 +269,22 @@ class StartRecovery(unittest.TestCase):
         session = {'recovery_search': 0}
         status = recover_start(MagicMock(), 'Cinco De T A C O', session, [], {}, now=100)
         self.assertEqual(status, 'Needs attention; no usable Start control found')
+
+
+class UpdatedModulesWin(unittest.TestCase):
+    def test_updated_files_take_precedence(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__('shutil').rmtree(root, ignore_errors=True))
+        (root / 'supply_manager.py').write_text('MARKER = "from disk"\n')
+        finder = hub.PreferUpdatedModules(root)
+        spec = finder.find_spec('supply_manager')
+        self.assertIsNotNone(spec)
+        self.assertEqual(Path(spec.origin), root / 'supply_manager.py')
+        module = __import__('importlib.util').util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.assertEqual(module.MARKER, 'from disk')
+
+    def test_other_or_missing_modules_are_left_alone(self):
+        finder = hub.PreferUpdatedModules(Path(tempfile.mkdtemp()))
+        self.assertIsNone(finder.find_spec('json'))
+        self.assertIsNone(finder.find_spec('qt_app'))
