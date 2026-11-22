@@ -28,6 +28,7 @@ public static class HubInput {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+    [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr h);
     [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT p);
     [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr h, uint flags);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
@@ -49,14 +50,7 @@ public static class HubInput {
             $select = $tab.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)
             if (-not $select.Current.IsSelected) { $select.Select(); Start-Sleep -Milliseconds 500 }
         }
-        $cell = $hub.FindFirst($Scope::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, $Character)))
-        if (-not $cell) { throw "Row for '$Character' not found in the hub" }
-        $header = $hub.FindFirst($Scope::Descendants, (New-Object System.Windows.Automation.AndCondition(
-            (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, [System.Windows.Automation.ControlType]::Header)),
-            (New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, $caption)))))
-        if (-not $header) { throw "Column '$caption' not found in the hub" }
         $hwnd = [IntPtr]$hub.Current.NativeWindowHandle
-        # Restore only a minimized hub (SW_RESTORE on a maximized window changes the layout).
         if ([HubInput]::IsIconic($hwnd)) { [HubInput]::ShowWindow($hwnd, 9) | Out-Null }
         # An Alt tap lifts Windows' foreground lock so SetForegroundWindow is honoured.
         [HubInput]::keybd_event(0x12, 0, 0, [IntPtr]::Zero); [HubInput]::keybd_event(0x12, 0, 2, [IntPtr]::Zero)
@@ -65,39 +59,44 @@ public static class HubInput {
         # Other always-on-top windows (e.g. TacoBot) can cover the hub: raise the hub
         # above them for the click, and drop it back to normal z-order afterwards.
         [HubInput]::SetWindowPos($hwnd, [IntPtr](-1), 0, 0, 0, 0, 0x0003) | Out-Null  # HWND_TOPMOST, NOSIZE|NOMOVE
-        Start-Sleep -Milliseconds 500
-        # Measure only after the window is raised and settled, so the layout is final.
-        $row = $cell.Current.BoundingRectangle; $col = $header.Current.BoundingRectangle
-        $x = [int]($col.Left + $col.Width / 2); $y = [int]($row.Top + $row.Height / 2)
-        # The table is wider than a normal hub window: when the cell is scrolled outside the
-        # window, maximize the hub for this click and restore it afterwards.
-        $maximized = $false
-        $win = $hub.Current.BoundingRectangle
-        if ($x -ge $win.Right -or $x -le $win.Left -or $y -ge $win.Bottom -or $y -le $win.Top) {
-            [HubInput]::ShowWindow($hwnd, 3) | Out-Null; $maximized = $true  # SW_MAXIMIZE
-            Start-Sleep -Milliseconds 800
-            $row = $cell.Current.BoundingRectangle; $col = $header.Current.BoundingRectangle
-            $x = [int]($col.Left + $col.Width / 2); $y = [int]($row.Top + $row.Height / 2)
+        try {
+            Start-Sleep -Milliseconds 500
+            # Locate the cell through the table's grid: it returns cells even when they are scrolled out of
+            # view, and with their real (scrolled) position. Header rectangles are not reliable once the
+            # wide table is scrolled sideways.
+            $table = $hub.FindFirst($Scope::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, [System.Windows.Automation.ControlType]::Table)))
+            if (-not $table) { throw 'Bots table not found in the hub' }
+            $grid = $table.GetCurrentPattern([System.Windows.Automation.GridPattern]::Pattern)
+            $headers = @($table.GetCurrentPattern([System.Windows.Automation.TablePattern]::Pattern).Current.GetColumnHeaders() | ForEach-Object { $_.Current.Name })
+            $charCol = [array]::IndexOf($headers, 'Character'); $col = [array]::IndexOf($headers, $caption)
+            if ($charCol -lt 0 -or $col -lt 0) { throw "Column '$caption' not found in the hub" }
+            $row = -1
+            for ($r = 0; $r -lt $grid.Current.RowCount; $r++) {
+                if ($grid.GetItem($r, $charCol).Current.Name -eq $Character) { $row = $r; break }
+            }
+            if ($row -lt 0) { throw "Row for '$Character' not found in the hub" }
+            $rect = $grid.GetItem($row, $col).Current.BoundingRectangle
+            $x = [int]($rect.Left + $rect.Width / 2); $y = [int]($rect.Top + $rect.Height / 2)
+            $view = $table.Current.BoundingRectangle
+            if ($rect.Width -le 0 -or $x -le $view.Left -or $x -ge $view.Right -or $y -le $view.Top -or $y -ge $view.Bottom) {
+                throw "The $caption cell for $Character is scrolled out of view at ($x,$y); scroll the hub table or widen the window"
+            }
+            # Never click blind: the top-level window under the point must be the hub itself.
+            $pt = New-Object HubInput+POINT; $pt.X = $x; $pt.Y = $y
+            $top = [HubInput]::GetAncestor([HubInput]::WindowFromPoint($pt), 2)  # GA_ROOT
+            if ($top -ne $hwnd) { throw "Another window covers the hub at ($x,$y); not clicking" }
+            $p = New-Object HubInput+POINT; [HubInput]::GetCursorPos([ref]$p) | Out-Null
+            [HubInput]::SetCursorPos($x, $y) | Out-Null
+            Start-Sleep -Milliseconds 100
+            [HubInput]::mouse_event(0x2, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 60
+            [HubInput]::mouse_event(0x4, 0, 0, 0, [IntPtr]::Zero)
+            Start-Sleep -Milliseconds 100
+            [HubInput]::SetCursorPos($p.X, $p.Y) | Out-Null
+            Start-Sleep -Milliseconds 300
+            "Clicked $caption for $Character at ($x,$y)"
+        } finally {
+            [HubInput]::SetWindowPos($hwnd, [IntPtr](-2), 0, 0, 0, 0, 0x0003) | Out-Null  # HWND_NOTOPMOST
         }
-        # Never click blind: the top-level window under the point must be the hub itself.
-        $pt = New-Object HubInput+POINT; $pt.X = $x; $pt.Y = $y
-        $top = [HubInput]::GetAncestor([HubInput]::WindowFromPoint($pt), 2)  # GA_ROOT
-        if ($top -ne $hwnd) {
-            if ($maximized) { [HubInput]::ShowWindow($hwnd, 9) | Out-Null }
-            [HubInput]::SetWindowPos($hwnd, [IntPtr](-2), 0, 0, 0, 0, 0x0003) | Out-Null
-            throw "Another window covers the hub at ($x,$y); not clicking"
-        }
-        $p = New-Object HubInput+POINT; [HubInput]::GetCursorPos([ref]$p) | Out-Null
-        [HubInput]::SetCursorPos($x, $y) | Out-Null
-        Start-Sleep -Milliseconds 100
-        [HubInput]::mouse_event(0x2, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 60
-        [HubInput]::mouse_event(0x4, 0, 0, 0, [IntPtr]::Zero)
-        Start-Sleep -Milliseconds 100
-        [HubInput]::SetCursorPos($p.X, $p.Y) | Out-Null
-        Start-Sleep -Milliseconds 300
-        if ($maximized) { [HubInput]::ShowWindow($hwnd, 9) | Out-Null }  # SW_RESTORE
-        [HubInput]::SetWindowPos($hwnd, [IntPtr](-2), 0, 0, 0, 0, 0x0003) | Out-Null  # HWND_NOTOPMOST
-        "Clicked $caption for $Character at ($x,$y)"
     }
     function Get-BotPid {
         $bot = Get-Process Encounter_ReBuilt -ErrorAction SilentlyContinue |
