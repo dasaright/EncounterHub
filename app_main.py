@@ -13,7 +13,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-VERSION = "2.1.6"
+VERSION = "2.2.0"
 
 
 def command_action(command, buttons):
@@ -208,6 +208,12 @@ def recover_start(native,name,session,children,buttons,now=None):
     now=time.monotonic() if now is None else now
     if session.get('recovery_attempted'):
         return 'Needs attention; Start recovery did not confirm startup'
+    # The bot is still working on its own start (it retries failed logins itself);
+    # keep waiting instead of reporting a missing Start control.
+    if 'Starting bot...' in buttons:
+        session.pop('recovery_search',None)
+        session['deadline']=now+60
+        return 'Bot is still starting (retrying login if needed)'
     started=session.setdefault('recovery_search',now)
     if now-started>30:return 'Needs attention; no usable Start control found'
     start=buttons.get('Start')
@@ -704,7 +710,7 @@ class Hub:
             elif s['phase']=='start':
                 selected=any(self.native.kind(c)=='ComboBox' and re.sub(r'^\s*\d+\s*-\s*','',self.native.text(c))==name for c in children)
                 if selected and self.native.click(buttons.get('Start')):
-                    s.update(phase='wait',deadline=time.monotonic()+300);self.report(name,'status','Start requested; waiting for game')
+                    s.update(phase='wait',deadline=time.monotonic()+600);self.report(name,'status','Start requested; waiting for game')
             return
         command=s['pending']
         if not command:

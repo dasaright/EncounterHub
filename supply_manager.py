@@ -21,7 +21,7 @@ RECIPES = {
         "fee": 250,
     },
     "Res Scrolls": {
-        "trader": "Edwin",
+        "trader": "Alcus Nailbiter",
         "materials": {"bones": 25, "plant_fibers": 25},
         "fee": 250,
     },
@@ -62,6 +62,19 @@ DEFAULT_CONFIG = {
         "feathers": 0,
         "iron": 0,
     },
+    # Set when live prices arrive from a bot (see apply_market_prices).
+    "market_updated": "",
+    "market_source": "",
+}
+
+# Keys the bot writes to Config/market.prices.ini [Market] -> hub material keys.
+MARKET_FILE = "market.prices.ini"
+MARKET_KEYS = {
+    "Bones": "bones",
+    "PlantFibres": "plant_fibers",
+    "Dust": "dust",
+    "Feathers": "feathers",
+    "Iron": "iron",
 }
 
 
@@ -87,7 +100,58 @@ def normalize_config(config=None):
         if result[key] not in PROFILES:
             result[key] = "Full Conset"
     result["automatic_enabled"] = bool(result["automatic_enabled"])
+    result["market_updated"] = str(result["market_updated"] or "")
+    result["market_source"] = str(result["market_source"] or "")
     return result
+
+
+def read_market_prices(path):
+    """Read live prices a bot published (Config/market.prices.ini); {} if unavailable.
+
+    Returns {"materials": {key: price_per_10}, "ecto": int, "updated": str, "source": str}
+    with only the prices that are present and positive.
+    """
+    import configparser
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.optionxform = str
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            parser.read_file(handle)
+    except (OSError, configparser.Error):
+        return {}
+    if not parser.has_section("Market"):
+        return {}
+    section = parser["Market"]
+
+    def positive(key):
+        try:
+            value = int(float(section.get(key, "0")))
+        except ValueError:
+            return 0
+        return value if value > 0 else 0
+
+    materials = {hub_key: positive(ini_key) for ini_key, hub_key in MARKET_KEYS.items()}
+    return {
+        "materials": {key: value for key, value in materials.items() if value},
+        "ecto": positive("Ecto"),
+        "updated": section.get("Updated", "").strip(),
+        "source": section.get("Source", "").strip(),
+    }
+
+
+def apply_market_prices(config, market):
+    """Return config updated with any live prices in market (from read_market_prices)."""
+    cfg = normalize_config(config)
+    if not market or (not market.get("materials") and not market.get("ecto")):
+        return cfg
+    for key, value in market.get("materials", {}).items():
+        if key in cfg["material_prices_per_10"] and value > 0:
+            cfg["material_prices_per_10"][key] = int(value)
+    if market.get("ecto", 0) > 0:
+        cfg["ecto_price"] = int(market["ecto"])
+    cfg["market_updated"] = market.get("updated", "")
+    cfg["market_source"] = market.get("source", "")
+    return cfg
 
 
 def material_batches(quantity, batch_size=10):
@@ -219,8 +283,17 @@ if QDialog is not None:
             form.addRow("Automatic replenishment", self.auto_enabled)
             root.addWidget(settings_box)
 
-            market_box = QGroupBox("Market assumptions")
+            market_box = QGroupBox("Market prices")
             market = QFormLayout(market_box)
+            if self.config["market_updated"]:
+                live = QLabel(
+                    f'Live trader prices from {self.config["market_source"] or "a bot"} '
+                    f'at {self.config["market_updated"]} (bots refresh these at most once a minute).'
+                )
+            else:
+                live = QLabel("No live prices yet: they arrive the next time a bot checks trader prices.")
+            live.setWordWrap(True)
+            market.addRow(live)
             self.ecto_price = QSpinBox()
             self.ecto_price.setRange(0, 2_000_000_000)
             self.ecto_price.setGroupSeparatorShown(True)
@@ -288,6 +361,8 @@ if QDialog is not None:
                 "material_prices_per_10": {
                     key: field.value() for key, field in self.material_inputs.items()
                 },
+                "market_updated": self.config["market_updated"],
+                "market_source": self.config["market_source"],
             })
 
         def refresh_costs(self, *_):

@@ -253,3 +253,19 @@ class RowControls(unittest.TestCase):
                 h.monitor_stop.set();h.monitor_worker.join(timeout=5);root.destroy()
 
 if __name__=='__main__':unittest.main()
+
+
+class StartRecovery(unittest.TestCase):
+    def test_waits_while_bot_is_still_starting(self):
+        from app_main import recover_start
+        session = {'recovery_search': 0}
+        status = recover_start(MagicMock(), 'Cinco De T A C O', session, [], {'Starting bot...': 1}, now=100)
+        self.assertIn('still starting', status)
+        self.assertNotIn('recovery_search', session)
+        self.assertEqual(session['deadline'], 160)
+
+    def test_missing_start_control_still_reported_when_bot_is_idle(self):
+        from app_main import recover_start
+        session = {'recovery_search': 0}
+        status = recover_start(MagicMock(), 'Cinco De T A C O', session, [], {}, now=100)
+        self.assertEqual(status, 'Needs attention; no usable Start control found')

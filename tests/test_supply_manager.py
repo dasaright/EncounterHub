@@ -91,3 +91,48 @@ class SupplyPricingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MarketPriceTests(unittest.TestCase):
+    def write_market(self, text):
+        import tempfile
+        handle = tempfile.NamedTemporaryFile("w", suffix=".ini", delete=False, encoding="utf-8")
+        handle.write(text)
+        handle.close()
+        self.addCleanup(Path(handle.name).unlink)
+        return handle.name
+
+    def test_res_scrolls_are_crafted_at_alcus(self):
+        self.assertEqual(RECIPES["Res Scrolls"]["trader"], "Alcus Nailbiter")
+
+    def test_reads_prices_published_by_the_bot(self):
+        from supply_manager import read_market_prices
+        path = self.write_market(
+            "[Market]\nBones=330\nPlantFibres=1700\nDust=410\nEcto=16000\n"
+            "Updated=2026/11/21 19:00:00\nSource=Cinco De T A C O\n")
+        market = read_market_prices(path)
+        self.assertEqual(market["materials"], {"bones": 330, "plant_fibers": 1700, "dust": 410})
+        self.assertEqual(market["ecto"], 16000)
+        self.assertEqual(market["source"], "Cinco De T A C O")
+
+    def test_missing_or_broken_file_gives_no_prices(self):
+        from supply_manager import read_market_prices
+        self.assertEqual(read_market_prices("does-not-exist.ini"), {})
+        self.assertEqual(read_market_prices(self.write_market("not an ini")), {})
+
+    def test_live_prices_flow_into_item_costs(self):
+        from supply_manager import apply_market_prices
+        market = {"materials": {"dust": 400, "feathers": 150}, "ecto": 16000,
+                  "updated": "2026/11/21 19:00:00", "source": "El Stabbito T A C O"}
+        base = {"material_prices_per_10": {"bones": 300, "iron": 260}}
+        cfg = apply_market_prices(base, market)
+        self.assertEqual(cfg["material_prices_per_10"],
+                         {"bones": 300, "plant_fibers": 0, "dust": 400, "feathers": 150, "iron": 260})
+        self.assertEqual(cfg["ecto_price"], 16000)
+        self.assertEqual(cfg["market_source"], "El Stabbito T A C O")
+        self.assertEqual(production_costs(cfg)["Essence of Celerity"]["total"], 5 * 400 + 5 * 150 + 250)
+
+    def test_empty_market_leaves_config_unchanged(self):
+        from supply_manager import apply_market_prices
+        base = normalize_config({"ecto_price": 15000})
+        self.assertEqual(apply_market_prices(base, {}), base)

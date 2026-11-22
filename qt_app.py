@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBo
     QCheckBox,QComboBox,QTableWidget,QTableWidgetItem,QHeaderView,QAbstractItemView,QFileDialog,QMessageBox)
 import app_main as engine
 from supervisor import ensure, RemoteProcess, command_line
-from supply_manager import SupplyDialog, normalize_config, PROFILES
+from supply_manager import SupplyDialog, normalize_config, PROFILES, MARKET_FILE, read_market_prices, apply_market_prices
 
 # TacoBot's exact current desktop stylesheet, committed in this repo.
 try:
@@ -1942,7 +1942,7 @@ class Desktop(QMainWindow):
         self.setWindowTitle('Encounter Hub '+engine.VERSION);self.resize(1400,640);self.setMinimumSize(900,460)
         self.closing=False;self.restarting=False;self.busy_update=False;self.update_available=False;self.update_commit=None
         self.native=engine.Native() if sys.platform=='win32' else None
-        self.sessions={};self.retired=[];self.checked=set();self.rows={};self.row_widgets={};self.paused_accounts=set();self.buy_cons_pending=set()
+        self.sessions={};self.retired=[];self.checked=set();self.rows={};self.row_widgets={};self.paused_accounts=set();self.buy_cons_pending=set();self.market_checked_at=0.0;self.market_mtime=None
         self.monitor_events=queue.Queue();self.requests=queue.Queue();self.monitor_stop=threading.Event();self.events=queue.Queue()
         self.data=Path(os.environ.get('LOCALAPPDATA',str(Path.home())))/'EncounterHub';self.data.mkdir(parents=True,exist_ok=True)
         self.settings_path=self.data/'settings.json'
@@ -2203,8 +2203,28 @@ class Desktop(QMainWindow):
             self.paused_accounts.discard(name);self.update_buycons_button(name)
         return engine.Hub.stop(self,names)
 
+    def refresh_market_prices(self):
+        """Pull live trader prices a bot published (at most once a minute) into the supply settings."""
+        now=time.monotonic()
+        if now-self.market_checked_at<5:return
+        self.market_checked_at=now
+        path=self.exe.parent/'Config'/MARKET_FILE
+        try:mtime=path.stat().st_mtime
+        except OSError:return
+        if mtime==self.market_mtime:return
+        self.market_mtime=mtime
+        market=read_market_prices(path)
+        if not market:return
+        config=apply_market_prices(self.settings.get('supply',{}),market)
+        if config==normalize_config(self.settings.get('supply',{})):return
+        self.settings['supply']=config
+        self.save()
+        self.notice.setText('Live market prices updated from '+(market.get('source') or 'a bot')+
+                            (' at '+market['updated'] if market.get('updated') else '')+'.')
+
     def tick(self):
         if self.closing:return
+        self.refresh_market_prices()
         try:
             while True:
                 name,column,value=self.monitor_events.get_nowait()
@@ -2231,7 +2251,7 @@ class Desktop(QMainWindow):
             if not (folder/('supply.manual.'+key+'.request')).exists() and not (folder/('supply.manual.'+key+'.running')).exists():
                 self.buy_cons_pending.discard(name)
                 self.update_buycons_button(name)
-                self.notice.set('Manual supply routine finished for '+name+'.')
+                self.notice.setText('Manual supply routine finished for '+name+'.')
         try:
             while True:
                 kind,value=self.events.get_nowait()
