@@ -2479,14 +2479,36 @@ class Desktop(QMainWindow):
         with temp.open('w',encoding='utf-8') as handle:ini.write(handle)
         os.replace(temp,folder/'farms.ini')
 
+    def change_character(self,key,character):
+        """Choose which account character runs Ministerial; profession-locked farms ignore this."""
+        record=self.account_record(key)
+        session=self.sessions.get(key)
+        if record['farm']!='Ministerial' or (session and not session['stopping'] and session['process'].poll() is None):
+            self.refresh_character(key);return
+        if character not in self.account_characters.get(key,[]):return
+        record['characters']['Ministerial']=character
+        self.save();self.refresh_character(key);self.write_farms_ini()
+        self.notice.setText(self.account_label(key)+' — Ministerial character: '+character)
+
     def refresh_character(self,key):
-        """Show the character the selected farm will play (chosen automatically)."""
+        """Show a selectable character for Ministerial and profession-locked picks for other farms."""
         if key not in self.rows:return
         record=self.account_record(key);character=self.row_character(key)
         need=FARM_PROFESSION.get(record['farm'])
+        combo=self.row_widgets.get(key,{}).get('character')
+        if combo:
+            names=self.account_characters.get(key,[])
+            with QSignalBlocker(combo):
+                combo.clear();combo.addItems(names)
+                if character:combo.setCurrentText(character)
+            session=self.sessions.get(key)
+            running=bool(session and not session['stopping'] and session['process'].poll() is None)
+            combo.setEnabled(record['farm']=='Ministerial' and not running and bool(names))
+            combo.setToolTip('Choose any character for Ministerial. Encounter ReBuilt handles the selected profession.' if record['farm']=='Ministerial'
+                             else 'Locked to this account\'s '+need+'.')
         self.tree.set(key,'character',character or ('No '+need+' — add one in Characters' if need else '—'))
         item=self.table.item(self.rows[key],COLUMNS.index('character'))
-        if item:item.setToolTip('Chosen by the farm: '+(need+' of this account' if need else "the account's main character")+'. Manage characters in the Characters tab.')
+        if item:item.setToolTip('Choose any account character for Ministerial.' if not need else 'Chosen automatically: '+need+' of this account.')
 
     def build_character_tab(self):
         page=QWidget();self.tabs.addTab(page,'Characters')
@@ -2618,6 +2640,9 @@ class Desktop(QMainWindow):
         account=QLineEdit(record.get('label') or name);account.setFrame(False);account.setToolTip('Account name (click to rename)')
         account.editingFinished.connect(lambda k=name,w=account:self.rename_account(k,w.text()))
         self.table.setCellWidget(row,COLUMNS.index('account'),account);widgets['account']=account
+        character=QComboBox();character.addItems(self.account_characters.get(name,[]))
+        character.currentTextChanged.connect(lambda value,k=name:self.change_character(k,value))
+        self.table.setCellWidget(row,COLUMNS.index('character'),character);widgets['character']=character
         farm=QComboBox();farm.addItems(FARMS);farm.setCurrentText(record['farm'])
         farm.currentTextChanged.connect(lambda value,k=name:self.change_farm(k,value))
         self.table.setCellWidget(row,COLUMNS.index('farm'),farm);widgets['farm']=farm
