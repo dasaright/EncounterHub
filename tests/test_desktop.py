@@ -170,6 +170,20 @@ class QtDesktop(unittest.TestCase):
         self.assertEqual(supply['Fiber']['Threshold'],'6500')
         self.assertEqual(w.character_table.rowCount(),2)
 
+    def test_ministerial_character_is_selectable_but_other_farms_are_locked(self):
+        w=self.window;key='Character One'
+        w.add_character('Second Character','Ranger',key)
+        character=w.row_widgets[key]['character']
+        self.assertTrue(character.isEnabled())
+        character.setCurrentText('Second Character')
+        self.assertEqual(w.row_character(key),'Second Character')
+        self.assertEqual(w.account_record(key)['characters']['Ministerial'],'Second Character')
+        w.row_widgets[key]['farm'].setCurrentText('Fiber')
+        self.assertFalse(character.isEnabled())
+        self.assertEqual(w.row_character(key),'')
+        w.row_widgets[key]['farm'].setCurrentText('Vaettir')
+        self.assertFalse(character.isEnabled())
+
     def test_farm_options_dialog_saves_pcons_and_farm_options(self):
         import configparser
         from PySide6.QtCore import Qt
