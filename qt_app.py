@@ -2241,6 +2241,9 @@ class Desktop(QMainWindow):
         try:sections=parse_characters(read_ini_text(self.characters_ini())[0])
         except OSError:sections={}
         groups=group_accounts(sections)
+        # Rows follow the saved account order; accounts not in it come after, in their default order.
+        order=[key for key in self.settings.get('account_order',[]) if isinstance(key,str)]
+        groups.sort(key=lambda group:order.index(group[0]) if group[0] in order else len(order))
         self.account_characters={key:list(names) for key,names in groups}
         self.table.setRowCount(0);self.rows.clear();self.row_widgets.clear()
         changed=False
