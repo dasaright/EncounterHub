@@ -2033,7 +2033,7 @@ Func AddOns_SellInventory($a_i_IncludeBag1 = True, $a_i_IncludeBag2 = True, $a_i
 
         If Not ItemFilter_CanSellToMerchant_OS($l_p_Item, $l_i_Type, $l_i_ModelID, $l_i_Value) Then ContinueLoop
         ; Fiber farm keeps dual vamp golds and perfect shields (stored afterwards), like gw-suite.
-        If Farm_KeepsRares() And Fiber_IsKeeper($l_p_Item) Then ContinueLoop
+        If Farm_KeepsRares() And (Fiber_IsKeeper($l_p_Item) Or Farm_StoresGold($l_p_Item)) Then ContinueLoop
 
         Merchant_SellItem($l_p_Item)
         Sleep(50 + $l_i_Ping)

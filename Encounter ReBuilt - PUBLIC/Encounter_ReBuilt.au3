@@ -2051,12 +2051,20 @@ EndFunc   ;==>Spike
 ; Related........: GUI_GUICtrlIsChecked, BitAND, BitOR, BitShift, UBound
 ; ===============================================================================================================================
 Func CreatePickupSet()
+	If Farm_IsVaettir() And Vaettir_EventOnly() Then Return Vaettir_EventPickupSet()
     Local $l_b_LPChecked = GUI_GUICtrlIsChecked($g_i_CtrlID_CBX_LootLP)
     Local $l_b_BDChecked = GUI_GUICtrlIsChecked($g_i_CtrlID_CBX_LootBD)
 	Local $l_b_TomeChecked = GUI_GUICtrlIsChecked($g_i_CtrlID_CBX_LootTome)
     Local $l_b_PConChecked = GUI_GUICtrlIsChecked($g_i_CtrlID_CBX_LootPCon)
     Local $l_b_EventTokenChecked = GUI_GUICtrlIsChecked($g_i_CtrlID_CBX_LootEventToken)
     Local $l_b_TPItemChecked = GUI_GUICtrlIsChecked($g_i_CtrlID_CBX_LootTPItem)
+    ; Hub Farm Options "Pcon Pickup" (global): when set, it replaces the PCon / event token / TP item checkboxes.
+    Local $l_ai_Pcons = Farm_PconModels()
+    If @extended Then
+        $l_b_PConChecked = False
+        $l_b_EventTokenChecked = False
+        $l_b_TPItemChecked = False
+    EndIf
 
     Local $l_m_PickUpSet[]
 
@@ -2094,6 +2102,10 @@ Func CreatePickupSet()
             $l_m_PickUpSet[$GC_AI_MODELIDS_LOOT_TPITEMS[$i]] = BitOR(BitShift($GC_I_STATISTICS_TRACKER_NONE, -16), BitAND($GC_I_EXTRAID_ANY, 0xFFFF))
         Next
     EndIf
+
+    For $i = 0 To UBound($l_ai_Pcons) - 1
+        Fiber_AddPickup($l_m_PickUpSet, $l_ai_Pcons[$i])
+    Next
 
     If Farm_IsFiber() Then Fiber_AddPickups($l_m_PickUpSet)
     If Farm_IsVaettir() Then Vaettir_AddPickups($l_m_PickUpSet)
@@ -2138,6 +2150,12 @@ Func CanPickUp($a_p_Item, $a_m_PickUpSet)
 	Local $l_i_ExtraID = DllStructGetData($s_d_PickUpStruct, "extraID")
     Local $l_i_ModelID = DllStructGetData($s_d_PickUpStruct, "modelID")
     Local $l_i_Rarity = Memory_Read(DllStructGetData($s_d_PickUpStruct, "rarity"), "ushort")
+
+	; Vaettir "Event items only": nothing but the set's models (event items and gold coins).
+	If MapExists($a_m_PickUpSet, "eventonly") Then
+		If MapExists($a_m_PickUpSet, $l_i_ModelID) Then Return SetExtended($GC_I_STATISTICS_TRACKER_NONE, True)
+		Return False
+	EndIf
 
 	If $l_i_Rarity = $GC_I_RARITY_GOLD Then
 		Return SetExtended($GC_I_STATISTICS_TRACKER_GOLDEN_ITEM, True)

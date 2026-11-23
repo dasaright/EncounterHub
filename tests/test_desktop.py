@@ -170,6 +170,61 @@ class QtDesktop(unittest.TestCase):
         self.assertEqual(supply['Fiber']['Threshold'],'6500')
         self.assertEqual(w.character_table.rowCount(),2)
 
+    def test_farm_options_dialog_saves_pcons_and_farm_options(self):
+        import configparser
+        from PySide6.QtCore import Qt
+        from qt_app import FarmOptionsDialog,DEFAULT_PCONS
+        w=self.window
+        self.assertEqual(w.farm_options_button.text(),'Farm Options')
+        dialog=FarmOptionsDialog(w,w.settings.get('supply',{}),w.settings.get('farm_options',{}),w.save_farm_options)
+        # Defaults follow the gw-suite bots' saved settings.
+        self.assertTrue(dialog.event_only.isChecked())
+        self.assertTrue(dialog.checks['Vaettir']['salvage_loot'].isChecked())
+        self.assertFalse(dialog.checks['Vaettir']['keep_glacial_stones'].isChecked())
+        self.assertTrue(dialog.checks['Fiber']['salvage_dragon_root'].isChecked())
+        self.assertEqual(dialog.golds['Fiber'].currentText(),'Salvage')
+        self.assertEqual(sorted(dialog.pcons()),sorted(DEFAULT_PCONS))
+        dialog.set_all_pcons(Qt.CheckState.Unchecked)
+        for item in dialog.pcon_items():
+            if item.text().strip() in ('Slice of Pumpkin Pie','Hard Apple Cider'):item.setCheckState(Qt.CheckState.Checked)
+        dialog.fiber_threshold.setValue(7000);dialog.checks['Vaettir']['keep_glacial_stones'].setChecked(True)
+        dialog.golds['Vaettir'].setCurrentText('Store')
+        dialog.save_settings()
+        options=w.settings['farm_options']
+        self.assertEqual(options['pcons'],[28436,28435])
+        self.assertTrue(options['Vaettir']['keep_glacial_stones']);self.assertEqual(options['Vaettir']['golds'],'Store')
+        self.assertEqual(w.settings['supply']['fiber_scroll_threshold'],7000)
+        supply=configparser.ConfigParser();supply.read(w.exe.parent/'Config'/'supply.ini')
+        self.assertEqual(supply['Pcons']['PickUp'],'28436,28435')
+        self.assertEqual(supply['Vaettir']['EventItemsOnly'],'true')
+        self.assertEqual(supply['Vaettir']['KeepGlacialStones'],'true')
+        self.assertEqual(supply['Vaettir']['Golds'],'Store')
+        self.assertEqual(supply['Fiber']['SalvageDragonRoot'],'true')
+        self.assertEqual(supply['Fiber']['Threshold'],'7000')
+
+    def test_event_items_only_needs_a_pcon(self):
+        from PySide6.QtCore import Qt
+        from qt_app import FarmOptionsDialog
+        w=self.window
+        dialog=FarmOptionsDialog(w,{},{},w.save_farm_options);dialog.set_all_pcons(Qt.CheckState.Unchecked)
+        with patch('qt_app.QMessageBox.warning') as warning:dialog.save_settings()
+        warning.assert_called_once();self.assertNotIn('farm_options',w.settings)
+
+    def test_farm_options_normalize(self):
+        from qt_app import normalize_farm_options
+        result=normalize_farm_options({'pcons':['28436',99,'x',28436],'Vaettir':{'event_items_only':0,'golds':'Melt'}})
+        self.assertEqual(result['pcons'],[28436])
+        self.assertFalse(result['Vaettir']['event_items_only']);self.assertEqual(result['Vaettir']['golds'],'Salvage')
+        self.assertTrue(normalize_farm_options(None)['Vaettir']['event_items_only'])
+
+    def test_reconnect_keeps_saved_farm_when_it_plays_the_running_character(self):
+        w=self.window;key='Character One'
+        w.row_widgets[key]['farm'].setCurrentText('Ministerial')
+        w.settings.setdefault('characters',{})['Character One']={'profession':'Assassin','account':key}
+        w.broker=Mock();w.broker.call.return_value=[{'active':True,'exe':str(w.exe),'character':'Character One','identifier':'x','pid':1}]
+        with patch('qt_app.RemoteProcess'):w.reconnect()
+        self.assertEqual(w.account_record(key)['farm'],'Ministerial')
+
     def test_vaettir_farm_plays_the_accounts_assassin(self):
         import configparser
         w=self.window;key='Character One'
