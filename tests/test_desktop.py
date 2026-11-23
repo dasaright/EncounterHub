@@ -183,6 +183,22 @@ class QtDesktop(unittest.TestCase):
         # One character serves Ministerial and Vaettir; the selected farm wins.
         self.assertEqual(dict(farms['Farms']),{'Character One':'Vaettir','Ranger Two':'Fiber'})
 
+    def test_rows_follow_the_saved_account_order(self):
+        import json as _json
+        from qt_app import Desktop,account_key
+        folder=Path(self.temp.name)
+        (folder/'Config'/'characters.ini').write_text('[Alpha]\nEmail = a@example.com\n[Bravo]\nEmail = b@example.com\n[Charlie]\nEmail = c@example.com\n[Ranger B]\nEmail = b@example.com\n')
+        a,b,c=(account_key(e+'@example.com','') for e in 'abc')
+        (folder/'EncounterHub'/'settings.json').write_text(_json.dumps({'bot_path':str(folder/'Encounter_ReBuilt.exe'),'account_order':[c,b]}))
+        with patch.dict(os.environ,{'LOCALAPPDATA':str(folder)}):window=Desktop('test',start_supervisor=False)
+        try:
+            self.assertEqual(list(window.rows),[c,b,a])
+            self.assertEqual([window.rows[k] for k in (c,b,a)],[0,1,2])
+            self.assertEqual(window.account_characters[b],['Bravo','Ranger B'])
+            self.assertEqual(window.character_table.item(0,0).text(),'Charlie')
+        finally:
+            window.monitor_stop.set();window.monitor_worker.join(timeout=5);window.restarting=True;window.close();self.app.processEvents()
+
     def test_changing_profession_changes_the_farm_character(self):
         w=self.window;key='Character One'
         w.add_character('Ranger Two','Warrior',key)
