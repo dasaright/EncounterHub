@@ -14,6 +14,10 @@
 	clean-up, and the global Buy Cons gold trigger after every run.
 
 	Config\supply.ini [Vaettir] (optional): PickUpMapPieces=false, PickUpMesmerTomes=false
+	Written by the hub (Farm Options): EventItemsOnly, SalvageLoot, KeepGlacialStones, PickUpMapPieces,
+	PickUpMesmerTomes, Golds=Salvage|Sell|Store; the global [Pcons] PickUp list.
+	Event items only: pick up nothing but the Pcon Pickup items (and gold coins), stay in Jaga until the bags
+	are full, then store them in Longeye's Ledge.
 #ce ==============================================================================================================================
 
 Global Const $GC_I_VAETTIR_OUTPOST = $GC_I_MAP_ID_LONGEYES_LEDGE
@@ -42,6 +46,40 @@ Global $g_h_VaettirStuck = TimerInit()
 #Region Settings, setup
 Func Vaettir_Setting($a_s_Key, $a_s_Default)
 	Return StringLower(IniRead(Supply_ConfigPath(), "Vaettir", $a_s_Key, $a_s_Default)) = "true"
+EndFunc
+
+; Farm Options "Event items only" (on): the Pcon Pickup models, or an empty array when the option is off.
+Func Vaettir_EventModels()
+	Local $l_ai_None[0]
+	If Not Vaettir_Setting("EventItemsOnly", "false") Then Return $l_ai_None
+	Return Farm_PconModels()
+EndFunc
+
+Func Vaettir_EventOnly()
+	Return UBound(Vaettir_EventModels()) > 0
+EndFunc
+
+; Pickup set for "Event items only": gold coins (no bag slot) plus the chosen event items. The "eventonly"
+; marker makes CanPickUp skip everything else, gold-rarity items and salvage weapons included.
+Func Vaettir_EventPickupSet()
+	Local $l_m_PickUpSet[]
+	$l_m_PickUpSet[$GC_I_MODELID_GOLD_COIN] = BitOR(BitShift($GC_I_STATISTICS_TRACKER_NONE, -16), BitAND($GC_I_EXTRAID_ANY, 0xFFFF))
+	Local $l_ai_Models = Vaettir_EventModels()
+	For $i = 0 To UBound($l_ai_Models) - 1
+		Fiber_AddPickup($l_m_PickUpSet, $l_ai_Models[$i])
+	Next
+	$l_m_PickUpSet["eventonly"] = True
+	Return $l_m_PickUpSet
+EndFunc
+
+; Move every chosen event item from the bags to Xunlai storage.
+Func Vaettir_StoreEventItems()
+	Local $l_ai_Models = Vaettir_EventModels()
+	For $i = 0 To UBound($l_ai_Models) - 1
+		If Supply_BagCount($l_ai_Models[$i]) = 0 Then ContinueLoop
+		AddOns_Out("[VAETTIR] Storing " & Supply_BagCount($l_ai_Models[$i]) & " event items (model " & $l_ai_Models[$i] & ")")
+		AddOns_DepositItemsToStorage($l_ai_Models[$i], -1, -1, True, False)
+	Next
 EndFunc
 
 ; Start, restart and resume: be in Longeye's Ledge (or already in Jaga), solo, hard mode, build loaded.
@@ -110,7 +148,14 @@ Func Vaettir_RunThere()
 		If Not HeartbeatStep("Vaettir_Setup", "Vaettir_Setup") Then Return False
 	EndIf
 	Fiber_StoreMaterials()
-	If Fiber_NeedsInventory() Then
+	If Vaettir_EventOnly() Then
+		; Event items only: drop the event items off; salvage/ID kits are not needed because nothing else is picked up.
+		Vaettir_StoreEventItems()
+		If AddOns_GetEmptyInventorySlotCount() <= $GC_I_FIBER_FREE_SLOTS_MIN Then
+			If Not HeartbeatStep("Fiber_Inventory", "Fiber_Inventory") Then Return False
+			If Not HeartbeatStep("Vaettir_Setup", "Vaettir_Setup") Then Return False
+		EndIf
+	ElseIf Fiber_NeedsInventory() Then
 		If Not HeartbeatStep("Fiber_Inventory", "Fiber_Inventory") Then Return False
 		If Not HeartbeatStep("Vaettir_Setup", "Vaettir_Setup") Then Return False
 	EndIf
@@ -210,8 +255,10 @@ Func Vaettir_CombatLoop()
 		PickUpLoot(2500)
 	EndIf
 
-	; Bags nearly full: go to the outpost; Vaettir_RunThere cleans the inventory before the next run.
-	If AddOns_GetEmptyInventorySlotCount() <= $GC_I_FIBER_FREE_SLOTS_MIN Then
+	; Bags nearly full (event items only: completely full): go to the outpost; Vaettir_RunThere stores the
+	; event items or cleans the inventory before the next run.
+	Local $l_i_ReturnAt = Vaettir_EventOnly() ? 0 : $GC_I_FIBER_FREE_SLOTS_MIN
+	If AddOns_GetEmptyInventorySlotCount() <= $l_i_ReturnAt Then
 		AddOns_Out("[VAETTIR] Bags are full; travelling to Longeye's Ledge")
 		HeartbeatTravel($GC_I_VAETTIR_OUTPOST)
 		Return -1

@@ -89,6 +89,39 @@ Func Fiber_Setting($a_s_Key, $a_v_Default)
 	Return IniRead(Supply_ConfigPath(), "Fiber", $a_s_Key, $a_v_Default)
 EndFunc
 
+; Farm Options for the running farm: supply.ini [Fiber] / [Vaettir] (ports of the gw-suite checkboxes).
+Func Farm_OptionOn($a_s_Key, $a_b_Default)
+	Return StringLower(IniRead(Supply_ConfigPath(), Farm_Name(), $a_s_Key, $a_b_Default ? "true" : "false")) = "true"
+EndFunc
+
+; gw-suite "Golds" radio: salvage (default), sell or store gold items. Keepers are always stored.
+Func Farm_GoldsMode()
+	Local $l_s_Mode = StringLower(IniRead(Supply_ConfigPath(), Farm_Name(), "Golds", "Salvage"))
+	If $l_s_Mode = "sell" Or $l_s_Mode = "store" Then Return $l_s_Mode
+	Return "salvage"
+EndFunc
+
+Func Farm_StoresGold($a_p_Item)
+	If $a_p_Item = 0 Then Return False
+	Return Item_GetItemInfoByPtr($a_p_Item, "Rarity") = $GC_I_RARITY_GOLD And Farm_GoldsMode() = "store"
+EndFunc
+
+; Farm Options "Pcon Pickup" (global, every farm): model IDs from supply.ini [Pcons] PickUp.
+; @extended = 1 when the hub wrote the list (otherwise the bot GUI loot checkboxes decide).
+Func Farm_PconModels()
+	Local $l_ai_Models[0]
+	Local $l_s_List = IniRead(Supply_ConfigPath(), "Pcons", "PickUp", "<unset>")
+	If $l_s_List = "<unset>" Then Return SetExtended(0, $l_ai_Models)
+	Local $l_as_Parts = StringSplit($l_s_List, ",", 2) ; 2 = $STR_NOCOUNT
+	For $i = 0 To UBound($l_as_Parts) - 1
+		Local $l_i_Model = Int(StringStripWS($l_as_Parts[$i], 3))
+		If $l_i_Model <= 0 Then ContinueLoop
+		ReDim $l_ai_Models[UBound($l_ai_Models) + 1]
+		$l_ai_Models[UBound($l_ai_Models) - 1] = $l_i_Model
+	Next
+	Return SetExtended(1, $l_ai_Models)
+EndFunc
+
 Func Fiber_Threshold()
 	Local $l_i_Value = Int(Fiber_Setting("Threshold", "6500"))
 	If $l_i_Value < 25 Then $l_i_Value = 6500
@@ -368,18 +401,11 @@ EndFunc
 Func Fiber_AddPickups(ByRef $a_m_PickUpSet)
 	Local $l_ai_Models[] = [$GC_I_MODELID_PLANT_FIBRES, $GC_I_MODELID_DRAGON_ROOT, $GC_I_MODELID_SPIRITWOOD_PLANK, _
 		$GC_I_MODELID_MONSTROUS_EYE, $GC_I_MODELID_MONSTROUS_CLAW, $GC_I_MODELID_MONSTROUS_FANG, _
-		$GC_I_MODELID_RUBY, $GC_I_MODELID_SAPPHIRE, $GC_I_MODELID_DIAMOND, $GC_I_MODELID_LOCKPICK, _
-		$GC_I_MODELID_PUMPKIN_PIE, $GC_I_MODELID_PUMPKIN_COOKIE, $GC_I_MODELID_CANDY_CORN, $GC_I_MODELID_CANDY_APPLE, _
-		$GC_I_MODELID_TRICK_OR_TREAT_BAG, $GC_I_MODELID_GOLDEN_EGG, $GC_I_MODELID_CHOCOLATE_BUNNY, $GC_I_MODELID_CUPCAKE, _
-		$GC_I_MODELID_HONEYCOMB, $GC_I_MODELID_SUGARY_BLUE_DRINK, $GC_I_MODELID_HARD_APPLE_CIDER, $GC_I_MODELID_HUNTERS_ALE, _
-		$GC_I_MODELID_KRYTAN_BRANDY, $GC_I_MODELID_CHAMPAGNE_POPPER, $GC_I_MODELID_BOTTLE_ROCKET, $GC_I_MODELID_SPARKLER, _
-		$GC_I_MODELID_DELICIOUS_CAKE, $GC_I_MODELID_BATTLE_ISLE_ICED_TEA, $GC_I_MODELID_PARTY_BEACON, $GC_I_MODELID_WAR_SUPPLIES]
+		$GC_I_MODELID_RUBY, $GC_I_MODELID_SAPPHIRE, $GC_I_MODELID_DIAMOND, $GC_I_MODELID_LOCKPICK]
 	For $i = 0 To UBound($l_ai_Models) - 1
 		Fiber_AddPickup($a_m_PickUpSet, $l_ai_Models[$i])
 	Next
-	For $i = 0 To UBound($GC_AI_EVENT_ITEMS) - 1
-		Fiber_AddPickup($a_m_PickUpSet, $GC_AI_EVENT_ITEMS[$i])
-	Next
+	; Pcons and event drops: the hub's global Pcon Pickup list (CreatePickupSet adds it).
 	$a_m_PickUpSet["fiber"] = True ; marker (string key: AutoIt maps reject negative integer keys): CanPickUp also accepts salvageable weapon types
 	If Not MapExists($a_m_PickUpSet, $GC_I_MODELID_DYE) Then
 		$a_m_PickUpSet[$GC_I_MODELID_DYE] = BitOR(BitShift($GC_I_STATISTICS_TRACKER_BLACK_DYE, -16), BitAND($GC_I_EXTRAID_DYE_BLACK, 0xFFFF))
@@ -474,7 +500,8 @@ Func Fiber_StoreKeepers()
 	Local $l_av2_Inv = Item_GetInventoryArray()
 	For $i = 0 To UBound($l_av2_Inv, $UBOUND_ROWS) - 1
 		Local $l_p_Item = $l_av2_Inv[$i][$GC_I_INVENTORY_PTR]
-		If Not Fiber_IsKeeper($l_p_Item) Then ContinueLoop
+		Local $l_b_Keeper = Fiber_IsKeeper($l_p_Item)
+		If Not $l_b_Keeper And Not Farm_StoresGold($l_p_Item) Then ContinueLoop
 		Local $l_ai_Slot = AddOns_GetEmptyStorageSlot()
 		If $l_ai_Slot[0] = 0 Then
 			AddOns_Out("[WARN] Storage is full; keeping a rare weapon in the bags")
@@ -485,7 +512,7 @@ Func Fiber_StoreKeepers()
 		While Item_GetItemBySlot($l_ai_Slot[0], $l_ai_Slot[1]) = 0 And TimerDiff($l_h_Timer) < 1500
 			Sleep(20)
 		WEnd
-		AddOns_Out("[FIBER] Stored a rare weapon (dual vamp / perfect shield)")
+		AddOns_Out($l_b_Keeper ? "[FIBER] Stored a rare weapon (dual vamp / perfect shield)" : "[FARM] Stored a gold item (Golds: Store)")
 		$g_i_Count_StoredGoldItem += 1
 	Next
 EndFunc
@@ -498,10 +525,18 @@ EndFunc
 ; Returns True when something was identified or salvaged.
 Func Fiber_SalvageOne($a_b_Weapons = False)
 	If Supply_BagCount($GC_I_MODELID_SALVAGE_KIT) = 0 Then Return False
+	; Farm Options (read once per call)
+	Local $l_b_Fiber = Farm_IsFiber(), $l_b_Vaettir = Farm_IsVaettir()
+	Local $l_b_SalvageRoot = Not $l_b_Fiber Or Farm_OptionOn("SalvageDragonRoot", True)
+	Local $l_b_KeepGlacial = $l_b_Vaettir And Farm_OptionOn("KeepGlacialStones", False)
+	If $l_b_Vaettir And Not Farm_OptionOn("SalvageLoot", True) Then $a_b_Weapons = False
+	Local $l_b_SalvageGolds = Farm_GoldsMode() = "salvage"
 	Local $l_av2_Inv = Item_GetInventoryArray()
 	Local $l_i_Weapon = 0
 	For $i = 0 To UBound($l_av2_Inv, $UBOUND_ROWS) - 1
 		Local $l_i_Model = $l_av2_Inv[$i][$GC_I_INVENTORY_MODELID]
+		If $l_i_Model = $GC_I_MODELID_DRAGON_ROOT And Not $l_b_SalvageRoot Then ContinueLoop
+		If $l_i_Model = $GC_I_MODELID_GLACIAL_STONE And $l_b_KeepGlacial Then ContinueLoop
 		If $l_i_Model = $GC_I_MODELID_DRAGON_ROOT Or $l_i_Model = $GC_I_MODELID_SPIRITWOOD_PLANK Or $l_i_Model = $GC_I_MODELID_GLACIAL_STONE Then
 			If Not Item_SalvageItem($l_av2_Inv[$i][$GC_I_INVENTORY_ITEMID], "Standard", "Materials") Then Return False
 			Other_PingSleep(600)
@@ -518,6 +553,7 @@ Func Fiber_SalvageOne($a_b_Weapons = False)
 			Other_PingSleep(250)
 			Return True
 		EndIf
+		If $l_av2_Inv[$i][$GC_I_INVENTORY_RARITY] = $GC_I_RARITY_GOLD And Not $l_b_SalvageGolds Then ContinueLoop ; Golds: sell / store
 		If Fiber_ShouldKeepWeapon($l_p_Item, $l_av2_Inv[$i][$GC_I_INVENTORY_ITEMTYPE], $l_i_Model, $l_av2_Inv[$i][$GC_I_INVENTORY_VALUE]) Then ContinueLoop
 		$l_i_Weapon = $l_av2_Inv[$i][$GC_I_INVENTORY_ITEMID]
 	Next
@@ -549,6 +585,9 @@ Func Fiber_StoreMaterials()
 		If Supply_BagCount($l_ai_Models[$i]) >= 250 Then AddOns_DepositItemsToStorage($l_ai_Models[$i], -1, 1, True, False)
 	Next
 	If Supply_BagCount($GC_I_MODELID_LOCKPICK) > 0 Then AddOns_DepositItemsToStorage($GC_I_MODELID_LOCKPICK, -1, -1, True, False)
+	If Farm_IsVaettir() And Farm_OptionOn("KeepGlacialStones", False) And Supply_BagCount($GC_I_MODELID_GLACIAL_STONE) > 0 Then
+		AddOns_DepositItemsToStorage($GC_I_MODELID_GLACIAL_STONE, -1, -1, True, False)
+	EndIf
 	Fiber_StoreKeepers()
 EndFunc
 

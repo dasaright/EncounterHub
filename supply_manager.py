@@ -297,25 +297,6 @@ if QDialog is not None:
             form.addRow("Automatic replenishment", self.auto_enabled)
             root.addWidget(settings_box)
 
-            fiber_box = QGroupBox("Fiber farm")
-            fiber_form = QFormLayout(fiber_box)
-            self.fiber_enabled = QComboBox()
-            self.fiber_enabled.addItem("Disabled", False)
-            self.fiber_enabled.addItem("Enabled", True)
-            self.fiber_enabled.setCurrentIndex(1 if self.config["fiber_craft_scrolls"] else 0)
-            self.fiber_threshold = QSpinBox()
-            self.fiber_threshold.setRange(25, 1_000_000)
-            self.fiber_threshold.setGroupSeparatorShown(True)
-            self.fiber_threshold.setValue(self.config["fiber_scroll_threshold"])
-            self.fiber_reserve = QSpinBox()
-            self.fiber_reserve.setRange(0, 2_000_000_000)
-            self.fiber_reserve.setGroupSeparatorShown(True)
-            self.fiber_reserve.setValue(self.config["fiber_gold_reserve"])
-            fiber_form.addRow("Craft Res Scrolls", self.fiber_enabled)
-            fiber_form.addRow("Craft when stored fiber reaches", self.fiber_threshold)
-            fiber_form.addRow("Gold kept in reserve", self.fiber_reserve)
-            root.addWidget(fiber_box)
-
             market_box = QGroupBox("Market prices")
             market = QFormLayout(market_box)
             if self.config["market_updated"]:
@@ -365,7 +346,7 @@ if QDialog is not None:
             self.status = QLabel(
                 "When enabled, every farm checks bank + carried gold after each run; at the trigger it pauses, "
                 "runs the account's Automatically Craft profile until the gold is spent, then resumes. "
-                "Fiber farms also craft Res Scrolls when their fiber reaches the threshold above."
+                "Fiber Res Scroll crafting is set in Farm Options."
             )
             self.status.setWordWrap(True)
             root.addWidget(self.status)
@@ -397,9 +378,10 @@ if QDialog is not None:
                 },
                 "market_updated": self.config["market_updated"],
                 "market_source": self.config["market_source"],
-                "fiber_craft_scrolls": self.fiber_enabled.currentData(),
-                "fiber_scroll_threshold": self.fiber_threshold.value(),
-                "fiber_gold_reserve": self.fiber_reserve.value(),
+                # Fiber settings are edited in Farm Options; keep what is saved.
+                "fiber_craft_scrolls": self.config["fiber_craft_scrolls"],
+                "fiber_scroll_threshold": self.config["fiber_scroll_threshold"],
+                "fiber_gold_reserve": self.config["fiber_gold_reserve"],
             })
 
         def refresh_costs(self, *_):

@@ -13,7 +13,8 @@ import time
 from PySide6.QtCore import Qt, QTimer, QSignalBlocker, QByteArray, QBuffer, QIODevice
 from PySide6.QtGui import QIcon, QPixmap, QImageReader, QAction
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,
-    QCheckBox,QComboBox,QTableWidget,QTableWidgetItem,QHeaderView,QAbstractItemView,QFileDialog,QMessageBox,QLineEdit,QTabWidget)
+    QCheckBox,QComboBox,QTableWidget,QTableWidgetItem,QHeaderView,QAbstractItemView,QFileDialog,QMessageBox,QLineEdit,QTabWidget,
+    QDialog,QFormLayout,QGroupBox,QSpinBox,QListWidget,QListWidgetItem)
 import app_main as engine
 from supervisor import ensure, RemoteProcess, command_line
 from supply_manager import SupplyDialog, normalize_config, PROFILES, MARKET_FILE, read_market_prices, apply_market_prices
@@ -1906,6 +1907,69 @@ PROFESSIONS=('Unknown','Warrior','Ranger','Monk','Necromancer','Mesmer','Element
 # Farms that need a specific profession pick that account's character of that profession (Character Manager).
 # Ministerial runs on the account's main character.
 FARM_PROFESSION={'Fiber':'Ranger','Vaettir':'Assassin'}
+# Pcon Pickup (Farm Options): every farm picks up the ticked items. Groups of (name, model ID).
+PCON_GROUPS=(
+    ('Sweets and food',(('Birthday Cupcake',22269),('Slice of Pumpkin Pie',28436),('Golden Egg',22752),('Candy Apple',28431),
+        ('Candy Corn',28432),('Honeycomb',26784),('Chocolate Bunny',22644),('Fruitcake',21492),('Sugary Blue Drink',21812),
+        ('Red Bean Cake',15479),('Creme Brulee',15528),('Mandragor Root Cake',19170),('Jar of Honey',31150),
+        ('Krytan Lokum',35125),('Delicious Cake',36681),('Mini Treats of Purity',30208),('Drake Kabob',17060),
+        ('Bowl of Skalefin Soup',17061),('Pahnai Salad',17062),('War Supplies',35121),('Blue Rock Candy',31151),
+        ('Green Rock Candy',31152),('Red Rock Candy',31153))),
+    ('Alcohol',(('Hard Apple Cider',28435),("Hunter's Ale",910),('Shamrock Ale',22190),('Eggnog',6375),('Spiked Eggnog',6366),
+        ('Krytan Brandy',35124),('Battle Isle Iced Tea',36682),('Dwarven Ale',5585),('Aged Dwarven Ale',24593),
+        ("Aged Hunter's Ale",31145),("Witch's Brew",6049),('Vial of Absinthe',6367),('Flask of Firewater',2513),
+        ('Bottle of Rice Wine',15477),("Zehtuka's Jug",19171),('Bottle of Juniberry Gin',19172),
+        ('Bottle of Vabbian Wine',19173),('Bottle of Grog',30855))),
+    ('Party',(('Champagne Popper',21810),('Bottle Rocket',21809),('Sparkler',21813),('Party Beacon',36683),
+        ('Snowman Summoner',6376),('Ghost-in-the-Box',6368),('Squash Serum',6369),('Crate of Fireworks',29436),('Disco Ball',29543))),
+    ('Death penalty removal',(('Peppermint Candy Cane',6370),('Wintergreen Candy Cane',21488),('Rainbow Candy Cane',21489),
+        ('Four-Leaf Clover',22191),('Pumpkin Cookie',28433),('Refined Jelly',19039),('Elixir of Valor',21227),
+        ('Oath of Purity',30206),('Seal of the Dragon Empire',30211),('Shining Blade Ration',35127))),
+    ('Event drops and tokens',(('Trick-or-Treat Bag',28434),('Candy Cane Shard',556),('Victory Token',18345),
+        ('Lunar Token',21833),("Wayfarer's Mark",37765))),
+)
+PCON_IDS={model for _,items in PCON_GROUPS for _,model in items}
+# Ticked by default: what the Fiber and Vaettir farms picked up before Pcon Pickup existed.
+DEFAULT_PCONS=[28436,28433,28432,28431,28434,22752,22644,22269,26784,21812,28435,910,35124,21810,21809,21813,
+    36681,36682,36683,35121,556,18345,21833,37765]
+
+
+GOLDS_MODES=('Salvage','Sell','Store')
+# Per-farm options (ports of the gw-suite bot checkboxes). Defaults are the values the gw-suite bots were set to.
+FARM_OPTION_DEFAULTS={
+    'Fiber':{'salvage_dragon_root':True,'golds':'Salvage'},
+    'Vaettir':{'event_items_only':True,'salvage_loot':True,'keep_glacial_stones':False,
+        'pickup_map_pieces':False,'pickup_mesmer_tomes':False,'golds':'Salvage'},
+}
+# supply.ini keys the bot reads, per option.
+FARM_OPTION_KEYS={'salvage_dragon_root':'SalvageDragonRoot','golds':'Golds','event_items_only':'EventItemsOnly',
+    'salvage_loot':'SalvageLoot','keep_glacial_stones':'KeepGlacialStones','pickup_map_pieces':'PickUpMapPieces',
+    'pickup_mesmer_tomes':'PickUpMesmerTomes'}
+
+
+def normalize_farm_options(options=None):
+    """settings.json farm_options: the global pcon pickup list plus per-farm options.
+    Fiber's Res Scroll settings stay in the supply config."""
+    options=options if isinstance(options,dict) else {}
+    raw=options.get('pcons',DEFAULT_PCONS)
+    pcons=[]
+    for model in raw if isinstance(raw,list) else []:
+        try:model=int(model)
+        except (TypeError,ValueError):continue
+        if model in PCON_IDS and model not in pcons:pcons.append(model)
+    result={'pcons':pcons}
+    for farm,defaults in FARM_OPTION_DEFAULTS.items():
+        saved=options.get(farm,{})
+        if not isinstance(saved,dict):saved={}
+        values={}
+        for key,default in defaults.items():
+            value=saved.get(key,default)
+            if key=='golds':values[key]=value if value in GOLDS_MODES else default
+            else:values[key]=bool(value)
+        result[farm]=values
+    return result
+
+
 CHARACTER_NAME=re.compile(r"[A-Za-z][A-Za-z ']{1,17}[A-Za-z]")
 INI_HEADER=re.compile(r'^\s*\[([^\]\r\n]+)\]\s*$')
 
@@ -1979,6 +2043,106 @@ def clone_character_section(path,source,name):
     os.replace(temporary,path)
     return True
 
+class FarmOptionsDialog(QDialog):
+    """One tab per farm plus the global Pcon Pickup tab. Saving calls on_save(supply_config, farm_options)."""
+    LABELS={'salvage_dragon_root':'Salvage dragon roots','event_items_only':'Event items only',
+        'salvage_loot':'Salvage loot','keep_glacial_stones':'Keep glacial stones',
+        'pickup_map_pieces':'Pick up map pieces','pickup_mesmer_tomes':'Pick up Mesmer tomes'}
+    HELP={'event_items_only':'Pick up only the items ticked in Pcon Pickup (and gold coins); stay in Jaga until the bags '
+            'are full, then store them at Longeye\'s Ledge.',
+        'salvage_loot':'Salvage picked-up weapons for materials (identified first; keepers are stored).',
+        'keep_glacial_stones':'Store glacial stones instead of salvaging them.',
+        'salvage_dragon_root':'Salvage dragon roots for materials.'}
+
+    def __init__(self,parent,supply,options,on_save):
+        super().__init__(parent)
+        self.setWindowTitle('Farm Options');self.resize(540,600)
+        self.supply=normalize_config(supply);self.options=normalize_farm_options(options);self.on_save=on_save
+        self.checks={farm:{} for farm in FARM_OPTION_DEFAULTS};self.golds={}
+        root=QVBoxLayout(self);tabs=QTabWidget();root.addWidget(tabs)
+
+        ministerial=QWidget();layout=QVBoxLayout(ministerial)
+        note=QLabel('The Ministerial farm has no extra options yet. It picks up the items ticked in Pcon Pickup.');note.setWordWrap(True)
+        layout.addWidget(note);layout.addStretch();tabs.addTab(ministerial,'Ministerial')
+
+        fiber=QWidget();layout=QVBoxLayout(fiber)
+        layout.addWidget(self.option_box('Fiber','Loot',('salvage_dragon_root',)))
+        box=QGroupBox('Res Scrolls');form=QFormLayout(box)
+        self.fiber_enabled=QCheckBox('Craft Res Scrolls');self.fiber_enabled.setChecked(self.supply['fiber_craft_scrolls'])
+        self.fiber_threshold=QSpinBox();self.fiber_threshold.setRange(25,1_000_000);self.fiber_threshold.setGroupSeparatorShown(True)
+        self.fiber_threshold.setValue(self.supply['fiber_scroll_threshold'])
+        self.fiber_reserve=QSpinBox();self.fiber_reserve.setRange(0,2_000_000_000);self.fiber_reserve.setGroupSeparatorShown(True)
+        self.fiber_reserve.setValue(self.supply['fiber_gold_reserve'])
+        form.addRow(self.fiber_enabled);form.addRow('Craft when stored fiber reaches',self.fiber_threshold)
+        form.addRow('Gold kept in reserve',self.fiber_reserve)
+        layout.addWidget(box);layout.addStretch();tabs.addTab(fiber,'Fiber')
+
+        vaettir=QWidget();layout=QVBoxLayout(vaettir)
+        layout.addWidget(self.option_box('Vaettir','Loot',('event_items_only','salvage_loot','keep_glacial_stones',
+            'pickup_map_pieces','pickup_mesmer_tomes')))
+        layout.addStretch();tabs.addTab(vaettir,'Vaettir')
+        self.event_only=self.checks['Vaettir']['event_items_only']
+
+        pcons=QWidget();layout=QVBoxLayout(pcons)
+        note=QLabel('Every farm (Ministerial, Fiber and Vaettir) picks up the ticked items.');note.setWordWrap(True)
+        layout.addWidget(note)
+        row=QHBoxLayout()
+        for text,state in (('Tick All',Qt.CheckState.Checked),('Clear All',Qt.CheckState.Unchecked)):
+            button=QPushButton(text);button.clicked.connect(lambda _=False,value=state:self.set_all_pcons(value));row.addWidget(button)
+        row.addStretch();layout.addLayout(row)
+        self.pcon_list=QListWidget()
+        for group,items in PCON_GROUPS:
+            header=QListWidgetItem(group);header.setFlags(Qt.ItemFlag.NoItemFlags)
+            font=header.font();font.setBold(True);header.setFont(font);self.pcon_list.addItem(header)
+            for name,model in items:
+                item=QListWidgetItem('    '+name);item.setData(Qt.ItemDataRole.UserRole,model)
+                item.setFlags(Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsUserCheckable)
+                item.setCheckState(Qt.CheckState.Checked if model in self.options['pcons'] else Qt.CheckState.Unchecked)
+                self.pcon_list.addItem(item)
+        layout.addWidget(self.pcon_list,1);tabs.addTab(pcons,'Pcon Pickup')
+
+        buttons=QHBoxLayout();buttons.addStretch()
+        save=QPushButton('Save Settings');save.setProperty('primary',True);save.clicked.connect(self.save_settings)
+        close=QPushButton('Close');close.clicked.connect(self.reject)
+        buttons.addWidget(save);buttons.addWidget(close);root.addLayout(buttons)
+
+    def option_box(self,farm,title,keys):
+        box=QGroupBox(title);form=QFormLayout(box)
+        for key in keys:
+            check=QCheckBox(self.LABELS[key]);check.setChecked(self.options[farm][key])
+            if key in self.HELP:check.setToolTip(self.HELP[key])
+            form.addRow(check);self.checks[farm][key]=check
+            if key in self.HELP:
+                hint=QLabel(self.HELP[key]);hint.setWordWrap(True);hint.setStyleSheet('color:#8b949e;margin-left:22px;')
+                form.addRow(hint)
+        golds=QComboBox();golds.addItems(GOLDS_MODES);golds.setCurrentText(self.options[farm]['golds'])
+        golds.setToolTip('Gold items: salvage for materials, sell to the merchant, or store in Xunlai storage. '
+            'Dual vamp weapons and perfect shields are always stored.')
+        form.addRow('Gold items',golds);self.golds[farm]=golds
+        return box
+
+    def pcon_items(self):
+        return [self.pcon_list.item(i) for i in range(self.pcon_list.count()) if self.pcon_list.item(i).data(Qt.ItemDataRole.UserRole)]
+
+    def set_all_pcons(self,state):
+        for item in self.pcon_items():item.setCheckState(state)
+
+    def pcons(self):
+        return [item.data(Qt.ItemDataRole.UserRole) for item in self.pcon_items() if item.checkState()==Qt.CheckState.Checked]
+
+    def save_settings(self):
+        if self.event_only.isChecked() and not self.pcons():
+            QMessageBox.warning(self,'Farm Options','Tick at least one item in Pcon Pickup, or turn off "Event items only".');return
+        supply=dict(self.supply,fiber_craft_scrolls=self.fiber_enabled.isChecked(),
+            fiber_scroll_threshold=self.fiber_threshold.value(),fiber_gold_reserve=self.fiber_reserve.value())
+        options={'pcons':self.pcons()}
+        for farm,checks in self.checks.items():
+            options[farm]={key:check.isChecked() for key,check in checks.items()}
+            options[farm]['golds']=self.golds[farm].currentText()
+        self.on_save(normalize_config(supply),normalize_farm_options(options))
+        self.accept()
+
+
 class QtDialogs:
     @staticmethod
     def askyesno(title,text):return QMessageBox.question(None,title,text)==QMessageBox.StandardButton.Yes
@@ -2045,6 +2209,7 @@ class Desktop(QMainWindow):
         for text,callback in [('Choose Bot...',self.choose),('Select All',lambda:self.select_all(True)),('Clear Selection',lambda:self.select_all(False))]:
             button=QPushButton(text);button.clicked.connect(callback);toolbar.addWidget(button)
         self.supply_button=QPushButton('Supply Manager');self.supply_button.clicked.connect(self.open_supply_manager);toolbar.addWidget(self.supply_button)
+        self.farm_options_button=QPushButton('Farm Options');self.farm_options_button.clicked.connect(self.open_farm_options);toolbar.addWidget(self.farm_options_button)
         toolbar.addStretch();self.path_label=QLabel(str(self.exe));self.path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse);toolbar.addWidget(self.path_label)
         self.table=QTableWidget(0,len(COLUMNS));self.table.setHorizontalHeaderLabels(CAPTIONS);self.table.setAlternatingRowColors(True)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
@@ -2084,6 +2249,14 @@ class Desktop(QMainWindow):
         dialog=SupplyDialog(self,self.settings.get('supply',{}),self.save_supply_config)
         dialog.exec()
 
+    def open_farm_options(self):
+        FarmOptionsDialog(self,self.settings.get('supply',{}),self.settings.get('farm_options',{}),self.save_farm_options).exec()
+
+    def save_farm_options(self,supply,options):
+        self.settings['supply']=supply;self.settings['farm_options']=options
+        self.save();self.write_supply_ini()
+        self.notice.setText('Farm Options saved to the selected bot folder.')
+
     def supply_config_folder(self):
         folder=self.exe.parent/'Config'
         folder.mkdir(parents=True,exist_ok=True)
@@ -2113,6 +2286,14 @@ class Desktop(QMainWindow):
         ini['Fiber']={'CraftScrolls':str(cfg['fiber_craft_scrolls']).lower(),
             'Threshold':str(cfg['fiber_scroll_threshold']),
             'GoldReserve':str(cfg['fiber_gold_reserve'])}
+        options=normalize_farm_options(self.settings.get('farm_options',{}))
+        ini['Pcons']={'PickUp':','.join(str(model) for model in options['pcons'])}
+        for farm in FARM_OPTION_DEFAULTS:
+            section=dict(ini[farm]) if farm in ini else {}
+            for key,value in options[farm].items():
+                if key=='event_items_only':value=value and bool(options['pcons'])
+                section[FARM_OPTION_KEYS[key]]=value if isinstance(value,str) else str(value).lower()
+            ini[farm]=section
         # Profiles are chosen per account; the bot looks them up by the logged-in character.
         for key,names in getattr(self,'account_characters',{}).items():
             profiles=self.account_supply_profiles.get(key,{})
@@ -2498,12 +2679,14 @@ class Desktop(QMainWindow):
             character=record['character'];name=self.account_for_character(character)
             if name is None:name=character;self.account_characters[name]=[character];self.add_row(name)
             account=self.account_record(name)
-            # Show the farm the running character was launched for.
+            # Show the farm the running character was launched for. Keep the saved farm when it plays that
+            # character (an Assassin main serves both Ministerial and Vaettir).
             for farm in FARMS:
+                if self.row_character(name,account['farm'])==character:break
                 if self.row_character(name,farm)==character and farm!=account['farm']:
                     account['farm']=farm
                     with QSignalBlocker(self.row_widgets[name]['farm']):self.row_widgets[name]['farm'].setCurrentText(farm)
-                    self.refresh_character(name)
+                    self.refresh_character(name);self.save()
             self.sessions[name]=self.session(RemoteProcess(self.broker,record['identifier'],record['pid']),'wait',character)
             self.sessions[name]['deadline']=time.monotonic()+300
             self.update_buycons_button(name)
