@@ -88,7 +88,7 @@ class QtDesktop(unittest.TestCase):
         self.assertEqual(self.window.table.columnCount(),19)
         self.assertEqual(self.window.table.horizontalHeaderItem(17).text(),'Total Pie')
         self.assertEqual(self.window.table.horizontalHeaderItem(18).text(),'Pie/hr')
-        self.assertEqual(COLUMNS,('check','account','character','farm','status','command','render','ontop','pause','resume','trade','stop','launch','buycons','automatic','manual','storage'))
+        self.assertEqual(COLUMNS,('check','account','character','farm','status','command','render','ontop','pause','resume','trade','stop','launch','buycons','automatic','manual','storage','total_pie','pie_hr'))
         self.assertEqual(self.window.row_widgets['Character One']['farm'].currentText(),'Ministerial')
         self.assertEqual(self.window.tree.set('Character One','character'),'Character One')
         self.window.command=Mock();self.window.launch=Mock();self.window.stop=Mock()
