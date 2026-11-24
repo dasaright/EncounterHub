@@ -85,7 +85,8 @@ class QtDesktop(unittest.TestCase):
 
     def test_native_columns_and_action_buttons(self):
         from qt_app import COLUMNS
-        self.assertEqual(self.window.table.columnCount(),17)
+        self.assertEqual(self.window.table.columnCount(),19)
+        self.assertEqual(COLUMNS[-2:],('total_pie','pie_hr'))
         self.assertEqual(COLUMNS,('check','account','character','farm','status','command','render','ontop','pause','resume','trade','stop','launch','buycons','automatic','manual','storage'))
         self.assertEqual(self.window.row_widgets['Character One']['farm'].currentText(),'Ministerial')
         self.assertEqual(self.window.tree.set('Character One','character'),'Character One')
