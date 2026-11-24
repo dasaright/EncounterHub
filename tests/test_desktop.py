@@ -397,6 +397,34 @@ class RealSupervisor(unittest.TestCase):
                 keeper.wait(timeout=10);unrelated.terminate();unrelated.wait(timeout=10)
 
 class Accounts(unittest.TestCase):
+    def test_bulk_add_rejects_duplicate_existing_and_batch_login_emails(self):
+        from qt_app import validate_new_account_emails
+        existing={'Main':{'email':'six@example.com'}}
+        with self.assertRaisesRegex(ValueError,'already used'):
+            validate_new_account_emails([{'email':'SIX@example.com'}],existing)
+        with self.assertRaisesRegex(ValueError,'more than once'):
+            validate_new_account_emails([{'email':'seven@example.com'},{'email':' SEVEN@example.com '}],existing)
+        validate_new_account_emails([{'email':'seven@example.com'},{'email':'eight@example.com'}],existing)
+
+    def test_dpapi_password_round_trip_preserves_unicode_and_special_characters(self):
+        if sys.platform!='win32':self.skipTest('Windows DPAPI required')
+        import ctypes
+        from ctypes import wintypes
+        from qt_app import protect_account_password
+        password="z'0dr£J25'-g"
+        protected=protect_account_password(password)
+        self.assertTrue(protected.startswith('{DPAPI}'))
+        raw=bytes.fromhex(protected[len('{DPAPI}'):])
+        class Blob(ctypes.Structure):
+            _fields_=[('size',wintypes.DWORD),('data',ctypes.c_void_p)]
+        source=Blob(len(raw),ctypes.cast(ctypes.create_string_buffer(raw),ctypes.c_void_p));target=Blob()
+        api=ctypes.windll.crypt32.CryptUnprotectData
+        api.argtypes=[ctypes.POINTER(Blob),ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,wintypes.DWORD,ctypes.POINTER(Blob)]
+        api.restype=wintypes.BOOL
+        self.assertTrue(api(ctypes.byref(source),None,None,None,None,1,ctypes.byref(target)))
+        try:self.assertEqual(ctypes.string_at(target.data,target.size).decode('utf-8'),password)
+        finally:ctypes.windll.kernel32.LocalFree(target.data)
+
     def test_characters_sharing_an_email_form_one_account(self):
         from qt_app import parse_characters,group_accounts
         text='[Main A]\nEmail = one@example.com\n[Ranger A]\nemail=ONE@example.com\n[Other]\nEmail = two@example.com\n[Loose]\n'
