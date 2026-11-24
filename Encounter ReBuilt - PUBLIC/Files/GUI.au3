@@ -758,7 +758,7 @@ Func GUI_LoadCharacterList()
 		Local $l_s_Character = $l_as_Sections[$i]
 		Local $l_s_Email = IniRead($GC_S_CHARACTERS_INI_PATH, $l_s_Character, "Email", "")
 		Local $l_s_Pwd = IniRead($GC_S_CHARACTERS_INI_PATH, $l_s_Character, "Pwd", "")
-        If StringLeft($l_s_Pwd, $GC_S_SEC_TAG_LE) <> $GC_S_SEC_TAG Then
+        If StringLeft($l_s_Pwd, $GC_S_SEC_TAG_LE) <> $GC_S_SEC_TAG And StringLeft($l_s_Pwd, 7) <> "{DPAPI}" Then
             IniWrite($GC_S_CHARACTERS_INI_PATH, $l_s_Character, "Pwd", Security_EncryptString($l_s_Pwd))
         EndIf
 		Local $l_s_FilePath = IniRead($GC_S_CHARACTERS_INI_PATH, $l_s_Character, "FilePath", "")
