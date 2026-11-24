@@ -946,8 +946,8 @@ Func PieStats_Start()
     $g_i_PieBankCount = AddOns_GetStorageItemCountbyModelID($GC_I_MODELID_PUMPKIN_PIE)
     $g_i_PieInventoryStart = AddOns_GetInventoryItemCountbyModelID($GC_I_MODELID_PUMPKIN_PIE)
     $g_h_PieSessionTimer = TimerInit()
-    IniWrite(@ScriptDir & "\\Config\\pie_stats.ini", $l_s_Character, "Banked", $g_i_PieBankCount)
-    IniWrite(@ScriptDir & "\\Config\\pie_stats.ini", $l_s_Character, "InventoryStart", $g_i_PieInventoryStart)
+    IniWrite(@ScriptDir & "\Config\pie_stats.ini", $l_s_Character, "Banked", $g_i_PieBankCount)
+    IniWrite(@ScriptDir & "\Config\pie_stats.ini", $l_s_Character, "InventoryStart", $g_i_PieInventoryStart)
     PieStats_Update()
 EndFunc
 
@@ -960,7 +960,7 @@ Func PieStats_Update()
     GUICtrlSetData($g_i_CtrlID_Label_TotalPie, $g_i_PieBankCount + $l_i_Inventory)
     GUICtrlSetData($g_i_CtrlID_Label_PiePerHour, $l_f_PiesPerHour)
     Local $l_s_Character = GUI_StripCharacterEnum(GUICtrlRead($g_i_CtrlID_Combo_CharInput))
-    IniWrite(@ScriptDir & "\\Config\\pie_stats.ini", $l_s_Character, "Inventory", $l_i_Inventory)
+    IniWrite(@ScriptDir & "\Config\pie_stats.ini", $l_s_Character, "Inventory", $l_i_Inventory)
 EndFunc
 
 ; #FUNCTION# ====================================================================================================================
