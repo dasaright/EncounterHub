@@ -2029,7 +2029,7 @@ def remove_character_sections(path,names):
     text,encoding=read_ini_text(path)
     selected=set(names);found=set();out=[];inside=False
     for line in text.splitlines(keepends=True):
-        header=INI_HEADER.match(line.rstrip('\\r\\n'))
+        header=INI_HEADER.match(line.rstrip('\r\n'))
         if header:
             inside=header.group(1) in selected
             if inside:found.add(header.group(1))
