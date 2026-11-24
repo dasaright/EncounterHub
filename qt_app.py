@@ -3123,7 +3123,12 @@ class Desktop(QMainWindow):
                     if not local.is_file() or hashlib.sha256(local.read_bytes()).hexdigest()!=digest:mismatches.append(name)
                 available=bool(mismatches)
                 detail=('Files to update: '+', '.join(mismatches)) if available else 'All installed files match the latest desktop bundle.'
-                message=('Encounter Hub '+manifest['version']+' is available. '+detail+'. Click Update Now.' if available else 'You are up to date ('+manifest['version']+'). '+detail)
+                if available and manifest['version']==engine.VERSION:
+                    message=('Encounter Hub '+engine.VERSION+' is installed, but some files are missing or differ from the release. '+detail+'. Click Update Now to repair these files.')
+                elif available:
+                    message=('Encounter Hub '+manifest['version']+' is available. '+detail+'. Click Update Now.')
+                else:
+                    message='You are up to date ('+manifest['version']+'). '+detail
                 self.events.put(('check',{'commit':commit,'available':available,'message':message}))
             except Exception as exc:self.events.put(('error','Update check failed: '+str(exc)))
         threading.Thread(target=work,daemon=True).start()
