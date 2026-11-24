@@ -2024,6 +2024,22 @@ def remove_character_section(path,name):
     return True
 
 
+def remove_character_sections(path,names):
+    """Delete multiple [character] sections atomically while preserving the INI encoding."""
+    text,encoding=read_ini_text(path)
+    selected=set(names);found=set();out=[];inside=False
+    for line in text.splitlines(keepends=True):
+        header=INI_HEADER.match(line.rstrip('\r\n'))
+        if header:
+            inside=header.group(1) in selected
+            if inside:found.add(header.group(1))
+        if not inside:out.append(line)
+    if found!=selected:raise ValueError('One or more account characters could not be found in characters.ini.')
+    temporary=Path(str(path)+'.tmp')
+    temporary.write_bytes(''.join(out).encode(encoding))
+    os.replace(temporary,path)
+
+
 def clone_character_section(path,source,name):
     """Add [name] to characters.ini with the login lines of [source] (same account), keeping the encoding."""
     text,encoding=read_ini_text(path)
@@ -2193,8 +2209,29 @@ class EditAccountDialog(QDialog):
         names=self.parent().account_characters.get(key,[])
         try:sections=parse_characters(read_ini_text(self.parent().characters_ini())[0]);record=sections[names[0]]
         except (OSError,KeyError,IndexError):return
-        self.exe.setText(record.get('filepath',''));self.email.setText(record.get('email',''));self.password.clear()
+        # The INI stores the existing login details (password is DPAPI-encrypted).
+        # Always preload the saved executable/email; a blank password means keep the saved password.
+        self.exe.setText(record.get('filepath',''))
+        self.email.setText(record.get('email',''))
+        self.password.clear()
     def values(self):return {'key':self.account.currentData(),'gw_exe':self.exe.text().strip(),'email':self.email.text().strip(),'password':self.password.text()}
+
+
+class RemoveAccountDialog(QDialog):
+    """Choose an entire Guild Wars login to remove, including all its characters."""
+    def __init__(self,parent,accounts):
+        super().__init__(parent)
+        self.setWindowTitle('Remove Account');self.resize(560,180)
+        layout=QVBoxLayout(self);form=QFormLayout();layout.addLayout(form)
+        self.account=QComboBox()
+        for key,names in accounts.items():
+            self.account.addItem(parent.account_label(key)+' — '+', '.join(names),key)
+        form.addRow('Account',self.account)
+        layout.addWidget(QLabel('This removes every character using this login from characters.ini and Encounter Hub settings.'))
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText('Remove Account')
+        buttons.accepted.connect(self.accept);buttons.rejected.connect(self.reject);layout.addWidget(buttons)
+    def key(self):return self.account.currentData()
 
 
 class AddAccountsDialog(QDialog):
@@ -2296,7 +2333,7 @@ class Desktop(QMainWindow):
         self.check_button=QPushButton('Check for Updates');self.check_button.clicked.connect(self.check_update);updates.addWidget(self.check_button)
         self.update_button=QPushButton('Update Now');self.update_button.setProperty('primary',True);self.update_button.setEnabled(False);self.update_button.clicked.connect(self.update_now);updates.addWidget(self.update_button)
         toolbar=QHBoxLayout();outer.addLayout(toolbar)
-        for text,callback in [('Choose Bot...',self.choose),('Add Accounts',self.add_accounts),('Edit Account',self.edit_account),('Select All',lambda:self.select_all(True)),('Clear Selection',lambda:self.select_all(False))]:
+        for text,callback in [('Choose Bot...',self.choose),('Add Accounts',self.add_accounts),('Edit Account',self.edit_account),('Remove Account',self.remove_account),('Select All',lambda:self.select_all(True)),('Clear Selection',lambda:self.select_all(False))]:
             button=QPushButton(text);button.clicked.connect(callback);toolbar.addWidget(button)
         self.supply_button=QPushButton('Supply Manager');self.supply_button.clicked.connect(self.open_supply_manager);toolbar.addWidget(self.supply_button)
         self.farm_options_button=QPushButton('Farm Options');self.farm_options_button.clicked.connect(self.open_farm_options);toolbar.addWidget(self.farm_options_button)
@@ -2362,6 +2399,32 @@ class Desktop(QMainWindow):
             QtDialogs.showerror('Could not add accounts',str(exc));return
         self.load_names();self.save()
         self.notice.setText(f'Added {len(records)} account character(s). Configure each farm and profession in the hub.')
+    def remove_account(self):
+        if not self.account_characters:return
+        dialog=RemoveAccountDialog(self,self.account_characters)
+        if dialog.exec()!=QDialog.DialogCode.Accepted:return
+        key=dialog.key()
+        if not key:return
+        names=list(self.account_characters.get(key,[]))
+        if not names:return
+        if self.account_busy(key):
+            QtDialogs.showinfo('Remove Account','Stop this account session before removing the account.');return
+        label=self.account_label(key)
+        if not QtDialogs.askyesno('Remove Account',
+            'Permanently remove '+label+' and all '+str(len(names))+' character(s)?\\n\\n'+
+            ', '.join(names)+'\\n\\nThis removes their characters.ini entries and saved Encounter Hub account/character settings.'):
+            return
+        try:remove_character_sections(self.characters_ini(),names)
+        except (OSError,ValueError) as exc:
+            QtDialogs.showerror('Could not remove account',str(exc));return
+        self.settings.get('accounts',{}).pop(key,None)
+        self.settings['account_order']=[item for item in self.settings.get('account_order',[]) if item!=key]
+        self.settings.get('account_supply_profiles',{}).pop(key,None)
+        self.checked.discard(key)
+        for name in names:self.settings.get('characters',{}).pop(name,None)
+        self.load_names();self.save()
+        self.notice.setText('Removed account '+label+' and '+str(len(names))+' character(s).')
+
     def edit_account(self):
         if not self.account_characters:return
         dialog=EditAccountDialog(self,self.account_characters)
