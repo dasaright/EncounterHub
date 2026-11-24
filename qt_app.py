@@ -2227,31 +2227,6 @@ def protect_account_password(password):
         ctypes.windll.kernel32.LocalFree(target.data)
 
 
-def append_account_character(path,record):
-    """Add a Guild Wars login section while preserving existing character entries."""
-    import configparser,io
-    name=record['character']
-    if not CHARACTER_NAME.fullmatch(name):raise ValueError(f'{name!r} is not a valid Guild Wars character name.')
-    exe=Path(record['gw_exe'])
-    if not exe.is_absolute() or exe.name.casefold()!='gw.exe':raise ValueError(f'Select a valid absolute path to Gw.exe for {name}.')
-    dat=exe.with_name('Gw.dat')
-    if not exe.is_file() or not dat.is_file():raise ValueError(f'Gw.exe and Gw.dat must both exist in {exe.parent}.')
-    if not record['email']:raise ValueError(f'Enter the account email for {name}.')
-    if not record['password']:raise ValueError(f'Enter the account password for {name}.')
-    path=Path(path);text,encoding=read_ini_text(path) if path.exists() else ('','utf-16')
-    parser=configparser.ConfigParser(interpolation=None);parser.optionxform=str
-    if text:parser.read_string(text)
-    if parser.has_section(name) or any(section.casefold()==name.casefold() for section in parser.sections()):
-        raise ValueError(f'{name} already exists in characters.ini.')
-    parser.add_section(name)
-    parser.set(name,'Email',record['email'])
-    parser.set(name,'FilePath',str(exe))
-    parser.set(name,'Pwd',protect_account_password(record['password']))
-    output=io.StringIO();parser.write(output,space_around_delimiters=False)
-    path.parent.mkdir(parents=True,exist_ok=True)
-    temporary=Path(str(path)+'.tmp');temporary.write_bytes(output.getvalue().encode(encoding));os.replace(temporary,path)
-
-
 class Desktop(QMainWindow):
     # Reuse only background controller behavior, not Tk layout or callbacks.
     step=engine.Hub.step
