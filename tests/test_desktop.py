@@ -184,6 +184,18 @@ class QtDesktop(unittest.TestCase):
         w.row_widgets[key]['farm'].setCurrentText('Vaettir')
         self.assertFalse(character.isEnabled())
 
+    def test_bulk_account_setup_writes_login_sections_without_plaintext_passwords(self):
+        w=self.window
+        w.write_new_accounts([{'character':'New Account Char','email':'new@example.com',
+            'gw_exe':str(Path(self.temp.name)/'Gw.exe'),'protected_password':'{DPAPI}protected'}])
+        from qt_app import parse_characters,read_ini_text
+        sections=parse_characters(read_ini_text(w.characters_ini())[0])
+        self.assertIn('New Account Char',sections)
+        saved=read_ini_text(w.characters_ini())[0]
+        self.assertIn('Email=new@example.com',saved)
+        self.assertIn('Pwd={DPAPI}protected',saved)
+        self.assertNotIn('plaintext',saved)
+
     def test_farm_options_dialog_saves_pcons_and_farm_options(self):
         import configparser
         from PySide6.QtCore import Qt
