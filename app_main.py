@@ -676,9 +676,9 @@ class Hub:
         if time.monotonic()<s.get('next_pie',0):return
         s['next_pie']=time.monotonic()+2
         window=s.get('window')
-        if not window or not self.native.u.IsWindow(window):window=self.native.window(s['process'].pid)
-        if not window:return
+        if not window or not self.native.u.IsWindow(window):return
         children=self.native.children(window)
+        if not isinstance(children,(list,tuple)):return
         for key,caption in (('total_pie','Total Pie'),('pie_hr','Pie/hr')):
             control=s.get(key+'_control')
             if not control or not self.native.u.IsWindow(control):control=pie_counter_control(self.native,children,caption);s[key+'_control']=control
