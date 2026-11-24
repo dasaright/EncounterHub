@@ -62,6 +62,14 @@ EndFunc
 ; ===============================================================================================================================
 Func Security_DecryptString($a_s_Crypt)
     If Not IsString($a_s_Crypt) Then Return $a_s_Crypt
+
+    ; Encounter Hub stores newly-added passwords with Windows DPAPI. Decrypt
+    ; that format here so the bot can consume them just like its native {SEC} values.
+    Local Const $l_s_DPAPI_TAG = "{DPAPI}"
+    If StringLeft($a_s_Crypt, StringLen($l_s_DPAPI_TAG)) = $l_s_DPAPI_TAG Then
+        Return Security_DecryptDPAPI(StringTrimLeft($a_s_Crypt, StringLen($l_s_DPAPI_TAG)))
+    EndIf
+
     If StringLeft($a_s_Crypt, $GC_S_SEC_TAG_LE) <> $GC_S_SEC_TAG Then Return $a_s_Crypt
 
     Local $l_s_Hex = "0x" & StringMid($a_s_Crypt, $GC_S_SEC_TAG_LE + 1)
@@ -69,6 +77,31 @@ Func Security_DecryptString($a_s_Crypt)
     If @error Or $l_x_Plain = "" Then Return SetError(2, 0, $a_s_Crypt)
 
     Return BinaryToString($l_x_Plain, $SB_UTF8)
+EndFunc
+
+; Decrypt a Windows CryptProtectData blob written by Encounter Hub (UTF-8 payload).
+Func Security_DecryptDPAPI($a_s_Hex)
+    If $a_s_Hex = "" Or Mod(StringLen($a_s_Hex), 2) <> 0 Or Not StringRegExp($a_s_Hex, "^[0-9A-Fa-f]+$") Then Return SetError(1, 0, "")
+
+    Local $l_b_Encrypted = Binary("0x" & $a_s_Hex)
+    Local $l_t_Input = DllStructCreate("dword;ptr")
+    Local $l_t_Bytes = DllStructCreate("byte[" & BinaryLen($l_b_Encrypted) & "]")
+    DllStructSetData($l_t_Bytes, 1, $l_b_Encrypted)
+    DllStructSetData($l_t_Input, 1, BinaryLen($l_b_Encrypted))
+    DllStructSetData($l_t_Input, 2, DllStructGetPtr($l_t_Bytes))
+
+    Local $l_t_Output = DllStructCreate("dword;ptr")
+    Local $l_av_Result = DllCall("Crypt32.dll", "bool", "CryptUnprotectData", _
+        "struct*", $l_t_Input, "ptr", 0, "ptr", 0, "ptr", 0, "ptr", 0, "dword", 1, "struct*", $l_t_Output)
+    If @error Or Not IsArray($l_av_Result) Or Not $l_av_Result[0] Then Return SetError(2, 0, "")
+
+    Local $l_i_Size = DllStructGetData($l_t_Output, 1)
+    Local $l_p_Data = DllStructGetData($l_t_Output, 2)
+    If $l_i_Size <= 0 Or $l_p_Data = 0 Then Return SetError(3, 0, "")
+    Local $l_t_Plain = DllStructCreate("byte[" & $l_i_Size & "]", $l_p_Data)
+    Local $l_s_Plain = BinaryToString(DllStructGetData($l_t_Plain, 1), 4)
+    DllCall("Kernel32.dll", "handle", "LocalFree", "handle", $l_p_Data)
+    Return $l_s_Plain
 EndFunc
 #EndRegion Encryption
 
