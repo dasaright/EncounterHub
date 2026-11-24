@@ -2022,6 +2022,18 @@ def validate_new_account_emails(records, existing_sections):
                              "Each Add Accounts row must use a different Guild Wars login.")
         pending.add(email)
 
+def append_account_order(saved_order, existing_sections, records):
+    """Keep current rows stable and append each newly added login exactly once."""
+    order=[]
+    for key in saved_order:
+        if isinstance(key,str) and key not in order:order.append(key)
+    for key,_names in group_accounts(existing_sections):
+        if key not in order:order.append(key)
+    for record in records:
+        key=account_key(record['email'],record['character'])
+        if key not in order:order.append(key)
+    return order
+
 
 def remove_character_section(path,name):
     """Delete [name] and its lines from characters.ini, keeping the encoding."""
@@ -2417,12 +2429,8 @@ class Desktop(QMainWindow):
             # Preserve the current account order, then append newly added logins in
             # the order entered. Without this, alphabetical character sorting can
             # insert a new account between existing rows and reuse an old label.
-            account_order=self.settings.setdefault('account_order',[])
-            for key,_names in group_accounts(existing_sections):
-                if key not in account_order:account_order.append(key)
-            for record in records:
-                key=account_key(record['email'],record['character'])
-                if key not in account_order:account_order.append(key)
+            self.settings['account_order']=append_account_order(
+                self.settings.get('account_order',[]),existing_sections,records)
             # Protect every password before mutating characters.ini.
             for record in records:record['protected_password']=protect_account_password(record['password'])
             self.write_new_accounts(records)
