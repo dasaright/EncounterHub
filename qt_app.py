@@ -2328,6 +2328,7 @@ class Desktop(QMainWindow):
     monitor=engine.Hub.monitor
     sync_options=engine.Hub.sync_options
     sync_storage=engine.Hub.sync_storage
+    sync_pie=engine.Hub.sync_pie
     report=engine.Hub.report
     command=engine.Hub.command
     stop=engine.Hub.stop

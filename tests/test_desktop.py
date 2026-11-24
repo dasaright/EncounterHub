@@ -83,6 +83,10 @@ class QtDesktop(unittest.TestCase):
         self.assertEqual(target.read_bytes(),base64.b64decode(APP_ICON_DATA))
         self.assertEqual(target.read_bytes(),(Path(__file__).resolve().parents[1]/'assets/taco-dagger.ico').read_bytes())
 
+    def test_desktop_exposes_pie_sync_hook(self):
+        import app_main as engine
+        self.assertIs(self.window.sync_pie.__func__,engine.Hub.sync_pie)
+
     def test_native_columns_and_action_buttons(self):
         from qt_app import COLUMNS
         self.assertEqual(self.window.table.columnCount(),19)
