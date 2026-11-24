@@ -252,6 +252,16 @@ def storage_counter_control(native,children):
     return None
 
 
+def pie_counter_control(native,children,caption):
+    """Find a hidden bot telemetry label's adjacent value control."""
+    for anchor in children:
+        if native.kind(anchor)=='Static' and native.text(anchor).strip().casefold()==caption.casefold():
+            anchor_id=native.u.GetDlgCtrlID(anchor)
+            for control in children:
+                if control!=anchor and native.kind(control)=='Static' and native.u.GetDlgCtrlID(control)==anchor_id+1:return control
+    return None
+
+
 class JobProcess:
     """Launch suspended, assign a private Windows Job, then resume.
 
@@ -568,6 +578,10 @@ class Hub:
                 self.tree.set(name,'status','Opening bot...');self.tree.set(name,'pid',p.pid);self.tree.set(name,'command','');self.tree.set(name,'games','')
             except OSError as exc:self.tree.set(name,'status',str(exc))
 
+    def auto_restart_session(self,name,s):
+        process=JobProcess(self.exe)
+        s.update(process=process,phase='select',deadline=time.monotonic()+90,pending=None,command_deadline=0,sent_at=0,pending_sent=False,window=None,controls=None,next_games=0,stopping=False,stop_phase=None,options={},option_requests={},next_options=0,recovery_attempted=False,recovery_search=None,auto_restart=False,auto_restart_at=None,minimize_on_start=True,minimized=False)
+
     def show(self):
         for name in self.selected():
             s=self.sessions.get(name)
@@ -656,14 +670,39 @@ class Hub:
             value=self.native.text(control).strip().replace(',','')
             if value.isdigit():self.report(name,'storage',str(int(value)))
 
+    def sync_pie(self,name,s):
+        if time.monotonic()<s.get('next_pie',0):return
+        s['next_pie']=time.monotonic()+2
+        window=s.get('window')
+        if not window or not self.native.u.IsWindow(window):window=self.native.window(s['process'].pid)
+        if not window:return
+        children=self.native.children(window)
+        for key,caption in (('total_pie','Total Pie'),('pie_hr','Pie/hr')):
+            control=s.get(key+'_control')
+            if not control or not self.native.u.IsWindow(control):control=pie_counter_control(self.native,children,caption);s[key+'_control']=control
+            if control:
+                value=self.native.text(control).strip().replace(',','')
+                if re.fullmatch(r'-?\\d+(?:\\.\\d+)?',value):self.report(name,key,value)
+
     def step(self,name,s):
         # Rows may be accounts; the bot window and its character list use the session's character.
         character=s.get('character',name)
+        now=time.monotonic()
+        if s.get('auto_restart_at') is not None:
+            if now<s['auto_restart_at']:
+                self.report(name,'status','Stopped; automatic relaunch in '+str(max(1,int(s['auto_restart_at']-now+0.999)))+' seconds');return
+            try:self.auto_restart_session(name,s);self.report(name,'status','Restarting bot after Needs Review')
+            except Exception as exc:s['auto_restart_at']=now+15;self.report(name,'status','Automatic relaunch failed; retrying in 15 seconds: '+str(exc))
+            return
         if s['stopping']:
             for key in ('render','ontop'):self.report(name,'_'+key+'_enabled',False)
-            status,finished=advance_stop(s)
-            self.report(name,'status',status)
-            if finished:self.report(name,'games','—');self.report(name,'command','Bot and owned clients stopped')
+            status,finished=advance_stop(s);self.report(name,'status',status)
+            if finished:
+                self.report(name,'games','—')
+                if s.pop('auto_restart',False):
+                    s['process'].close();s['stopping']=False;s['stop_phase']=None;s['auto_restart_at']=time.monotonic()+15
+                    self.report(name,'status','Bot and owned clients stopped; waiting 15 seconds before relaunch')
+                else:self.report(name,'command','Bot and owned clients stopped')
             return
         if time.monotonic()>=s['next_games']:
             self.report(name,'games',', '.join(map(str,s['process'].games())) or '—')
@@ -675,6 +714,7 @@ class Hub:
             if s['pending']:self.report(name,'command','Bot exited; command cancelled');s['pending']=None
             return
         self.sync_storage(name,s)
+        self.sync_pie(name,s)
         # A running bot with no command needs only a cheap process liveness check.
         if s['phase']=='done':self.sync_options(name,s)
         if s['phase']=='done' and not s['pending']:return
@@ -705,7 +745,13 @@ class Hub:
             s['phase']='done';self.report(name,'status','Recovered (Start confirmed)' if recovered else 'Started (window confirmed)');minimize_started_bot(self.native,h,s);self.sync_options(name,s)
         if s['phase']!='done':
             if time.monotonic()>s['deadline']:
-                self.report(name,'status',recover_start(self.native,character,s,children,buttons));return
+                status=recover_start(self.native,character,s,children,buttons);self.report(name,'status',status)
+                if status.startswith('Needs attention'):
+                    s.update(auto_restart=True,stopping=True,stop_phase='bot',pending=None)
+                    try:s['process'].terminate()
+                    except OSError as exc:s.update(auto_restart=False,stopping=False,stop_phase=None);self.report(name,'status','Needs Review; automatic stop failed: '+str(exc))
+                    else:self.report(name,'status','Needs Review; stopping bot and owned game clients before retry')
+                return
             if s['phase']=='select':
                 for c in children:
                     if self.native.kind(c)!='ComboBox':continue
