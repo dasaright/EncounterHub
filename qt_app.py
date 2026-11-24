@@ -14,7 +14,7 @@ from PySide6.QtCore import Qt, QTimer, QSignalBlocker, QByteArray, QBuffer, QIOD
 from PySide6.QtGui import QIcon, QPixmap, QImageReader, QAction
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,
     QCheckBox,QComboBox,QTableWidget,QTableWidgetItem,QHeaderView,QAbstractItemView,QFileDialog,QMessageBox,QLineEdit,QTabWidget,
-    QDialog,QFormLayout,QGroupBox,QSpinBox,QListWidget,QListWidgetItem)
+    QDialog,QFormLayout,QGroupBox,QSpinBox,QListWidget,QListWidgetItem,QScrollArea,QDialogButtonBox)
 import app_main as engine
 from supervisor import ensure, RemoteProcess, command_line
 from supply_manager import SupplyDialog, normalize_config, PROFILES, MARKET_FILE, read_market_prices, apply_market_prices
@@ -2167,6 +2167,91 @@ class TableAdapter:
         if not item:item=QTableWidgetItem();self.desktop.table.setItem(row,index,item)
         item.setText(str(value));return str(value)
 
+class AddAccountsDialog(QDialog):
+    """SkeleHub-style bulk account setup: add 1-10 Guild Wars logins in one pass."""
+    def __init__(self,parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Add Accounts');self.resize(680,600)
+        layout=QVBoxLayout(self);count_row=QHBoxLayout()
+        count_row.addWidget(QLabel('Number of accounts'))
+        self.count=QComboBox();self.count.addItems([str(n) for n in range(1,11)])
+        count_row.addWidget(self.count);layout.addLayout(count_row)
+        scroll=QScrollArea();scroll.setWidgetResizable(True);content=QWidget();form=QFormLayout(content)
+        self.fields=[];self.field_rows=[]
+        for n in range(1,11):
+            fields={};rows=[]
+            for key,caption in (('character','Character Name'),('gw_exe','Guild Wars Executable'),('email','Email'),('password','Account Password')):
+                editor=QLineEdit();editor.setObjectName(f'{key}_{n}')
+                if key=='password':editor.setEchoMode(QLineEdit.EchoMode.Password)
+                fields[key]=editor;widget=editor
+                if key=='gw_exe':
+                    widget=QWidget();line=QHBoxLayout(widget);line.setContentsMargins(0,0,0,0);line.addWidget(editor)
+                    browse=QPushButton('Browse…')
+                    browse.clicked.connect(lambda checked=False,target=editor:self.browse_executable(target))
+                    line.addWidget(browse)
+                label=QLabel(f'{caption} — Account {n}');form.addRow(label,widget);rows.append((label,widget))
+            self.fields.append(fields);self.field_rows.append(rows)
+        scroll.setWidget(content);layout.addWidget(scroll)
+        layout.addWidget(QLabel('Gw.dat must be present beside each Gw.exe. Passwords are stored using Windows user-bound encryption.'))
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept);buttons.rejected.connect(self.reject);layout.addWidget(buttons)
+        self.count.currentIndexChanged.connect(self.update_count);self.update_count()
+    def browse_executable(self,target):
+        path=QFileDialog.getOpenFileName(self,'Guild Wars Executable','','Guild Wars (Gw.exe);;Executables (*.exe)')[0]
+        if path:target.setText(path)
+    def update_count(self):
+        count=int(self.count.currentText())
+        for i,rows in enumerate(self.field_rows):
+            for label,widget in rows:label.setVisible(i<count);widget.setVisible(i<count)
+    def records(self):
+        return [{key:editor.text() if key=='password' else editor.text().strip() for key,editor in fields.items()}
+                for fields in self.fields[:int(self.count.currentText())]]
+
+
+def protect_account_password(password):
+    """Protect account credentials with Windows DPAPI; never store plaintext in hub settings."""
+    if sys.platform!='win32':raise OSError('Account setup requires Windows DPAPI.')
+    from ctypes import wintypes
+    class Blob(ctypes.Structure):
+        _fields_=[('size',wintypes.DWORD),('data',ctypes.c_void_p)]
+    raw=password.encode('utf-8');buffer=ctypes.create_string_buffer(raw)
+    source,target=Blob(len(raw),ctypes.cast(buffer,ctypes.c_void_p)),Blob()
+    api=ctypes.windll.crypt32.CryptProtectData
+    api.argtypes=[ctypes.POINTER(Blob),ctypes.c_wchar_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,wintypes.DWORD,ctypes.POINTER(Blob)]
+    api.restype=wintypes.BOOL
+    if not api(ctypes.byref(source),'EncounterHub',None,None,None,1,ctypes.byref(target)):
+        raise OSError('Could not protect account password.')
+    try:return '{DPAPI}'+ctypes.string_at(target.data,target.size).hex()
+    finally:
+        ctypes.windll.kernel32.LocalFree.argtypes=[ctypes.c_void_p]
+        ctypes.windll.kernel32.LocalFree(target.data)
+
+
+def append_account_character(path,record):
+    """Add a Guild Wars login section while preserving existing character entries."""
+    import configparser,io
+    name=record['character']
+    if not CHARACTER_NAME.fullmatch(name):raise ValueError(f'{name!r} is not a valid Guild Wars character name.')
+    exe=Path(record['gw_exe'])
+    if not exe.is_absolute() or exe.name.casefold()!='gw.exe':raise ValueError(f'Select a valid absolute path to Gw.exe for {name}.')
+    dat=exe.with_name('Gw.dat')
+    if not exe.is_file() or not dat.is_file():raise ValueError(f'Gw.exe and Gw.dat must both exist in {exe.parent}.')
+    if not record['email']:raise ValueError(f'Enter the account email for {name}.')
+    if not record['password']:raise ValueError(f'Enter the account password for {name}.')
+    path=Path(path);text,encoding=read_ini_text(path) if path.exists() else ('','utf-16')
+    parser=configparser.ConfigParser(interpolation=None);parser.optionxform=str
+    if text:parser.read_string(text)
+    if parser.has_section(name) or any(section.casefold()==name.casefold() for section in parser.sections()):
+        raise ValueError(f'{name} already exists in characters.ini.')
+    parser.add_section(name)
+    parser.set(name,'Email',record['email'])
+    parser.set(name,'FilePath',str(exe))
+    parser.set(name,'Pwd',protect_account_password(record['password']))
+    output=io.StringIO();parser.write(output,space_around_delimiters=False)
+    path.parent.mkdir(parents=True,exist_ok=True)
+    temporary=Path(str(path)+'.tmp');temporary.write_bytes(output.getvalue().encode(encoding));os.replace(temporary,path)
+
+
 class Desktop(QMainWindow):
     # Reuse only background controller behavior, not Tk layout or callbacks.
     step=engine.Hub.step
@@ -2206,7 +2291,7 @@ class Desktop(QMainWindow):
         self.check_button=QPushButton('Check for Updates');self.check_button.clicked.connect(self.check_update);updates.addWidget(self.check_button)
         self.update_button=QPushButton('Update Now');self.update_button.setProperty('primary',True);self.update_button.setEnabled(False);self.update_button.clicked.connect(self.update_now);updates.addWidget(self.update_button)
         toolbar=QHBoxLayout();outer.addLayout(toolbar)
-        for text,callback in [('Choose Bot...',self.choose),('Select All',lambda:self.select_all(True)),('Clear Selection',lambda:self.select_all(False))]:
+        for text,callback in [('Choose Bot...',self.choose),('Add Accounts',self.add_accounts),('Select All',lambda:self.select_all(True)),('Clear Selection',lambda:self.select_all(False))]:
             button=QPushButton(text);button.clicked.connect(callback);toolbar.addWidget(button)
         self.supply_button=QPushButton('Supply Manager');self.supply_button.clicked.connect(self.open_supply_manager);toolbar.addWidget(self.supply_button)
         self.farm_options_button=QPushButton('Farm Options');self.farm_options_button.clicked.connect(self.open_farm_options);toolbar.addWidget(self.farm_options_button)
@@ -2244,6 +2329,48 @@ class Desktop(QMainWindow):
         if start_supervisor and not self.exe.is_file():QTimer.singleShot(0,self.choose)
         menu=self.menuBar().addMenu('Application')
         shortcut=QAction('Create Desktop Shortcut',self);shortcut.triggered.connect(self.shortcut);menu.addAction(shortcut)
+
+    def add_accounts(self):
+        if any(self.account_busy(key) for key in self.rows):
+            QtDialogs.showinfo('Add Accounts','Stop active account sessions before adding new accounts.');return
+        dialog=AddAccountsDialog(self)
+        if dialog.exec()!=QDialog.DialogCode.Accepted:return
+        records=dialog.records()
+        if not records:return
+        try:
+            # Validate the whole batch before writing any new sections.
+            known={name.casefold() for names in self.account_characters.values() for name in names}
+            pending=set()
+            for record in records:
+                name=record['character']
+                if name.casefold() in known or name.casefold() in pending:raise ValueError(f'{name} is already in the character list or this batch.')
+                pending.add(name.casefold())
+                exe=Path(record['gw_exe'])
+                if not exe.is_absolute() or exe.name.casefold()!='gw.exe':raise ValueError(f'Select a valid absolute path to Gw.exe for {name}.')
+                if not exe.is_file() or not exe.with_name('Gw.dat').is_file():raise ValueError(f'Gw.exe and Gw.dat must both exist in {exe.parent}.')
+                if not record['email']:raise ValueError(f'Enter the account email for {name}.')
+                if not record['password']:raise ValueError(f'Enter the account password for {name}.')
+            # Protect every password before mutating characters.ini.
+            for record in records:record['protected_password']=protect_account_password(record['password'])
+            self.write_new_accounts(records)
+        except (OSError,ValueError) as exc:
+            QtDialogs.showerror('Could not add accounts',str(exc));return
+        self.load_names();self.save()
+        self.notice.setText(f'Added {len(records)} account character(s). Configure each farm and profession in the hub.')
+    def write_new_accounts(self,records):
+        import configparser,io
+        path=self.characters_ini();text,encoding=read_ini_text(path) if path.exists() else ('','utf-16')
+        parser=configparser.ConfigParser(interpolation=None);parser.optionxform=str
+        if text:parser.read_string(text)
+        for record in records:
+            name=record['character']
+            if not CHARACTER_NAME.fullmatch(name):raise ValueError(f'{name!r} is not a valid Guild Wars character name.')
+            if any(section.casefold()==name.casefold() for section in parser.sections()):raise ValueError(f'{name} already exists in characters.ini.')
+            parser.add_section(name);parser.set(name,'Email',record['email']);parser.set(name,'FilePath',str(Path(record['gw_exe'])))
+            parser.set(name,'Pwd',record['protected_password'])
+        output=io.StringIO();parser.write(output,space_around_delimiters=False)
+        path.parent.mkdir(parents=True,exist_ok=True)
+        temporary=Path(str(path)+'.tmp');temporary.write_bytes(output.getvalue().encode(encoding));os.replace(temporary,path)
 
     def open_supply_manager(self):
         dialog=SupplyDialog(self,self.settings.get('supply',{}),self.save_supply_config)
