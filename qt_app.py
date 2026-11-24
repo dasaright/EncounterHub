@@ -2995,7 +2995,10 @@ class Desktop(QMainWindow):
 
     def reconnect(self):
         for record in self.broker.call('snapshot'):
-            if not record['active'] or os.path.normcase(record['exe'])!=os.path.normcase(str(self.exe.resolve())):continue
+            # The supervisor owns these processes across Hub upgrades. Its recorded
+            # executable may be the pre-migration root-level bot path, so do not
+            # discard a live session merely because the preferred launch path changed.
+            if not record['active']:continue
             character=record['character'];name=self.account_for_character(character)
             if name is None:name=character;self.account_characters[name]=[character];self.add_row(name)
             account=self.account_record(name)
@@ -3115,12 +3118,22 @@ class Desktop(QMainWindow):
                 if manifest.get('format')!=1 or not required.issubset(manifest.get('files',{})) or not set(manifest.get('files',{})).issubset(allowed):
                     raise ValueError('GitHub returned an unsupported desktop update manifest')
                 mismatches=[]
+                frozen=getattr(sys,'frozen',False)
+                app_root=Path(sys.executable).resolve().parent if frozen else ROOT
+                module_root=Path(getattr(sys,'_MEIPASS',app_root)) if frozen else ROOT
                 for name,digest in manifest['files'].items():
                     if not isinstance(digest,str) or len(digest)!=64 or any(c not in '0123456789abcdef' for c in digest):
                         raise ValueError('Invalid SHA-256 in update manifest: '+name)
                     if name.endswith('/Encounter_ReBuilt.exe'):continue  # Locally compiled AutoIt binaries are not byte-for-byte reproducible.
-                    local=(ROOT.parent/Path(name[4:])) if name.startswith('bot/') else (ROOT/name)
-                    if not local.is_file() or hashlib.sha256(local.read_bytes()).hexdigest()!=digest:mismatches.append(name)
+                    if name.startswith('bot/'):
+                        relative=Path(name[len('bot/Encounter ReBuilt/'):])
+                        candidates=(app_root/'Encounter ReBuilt'/relative, ROOT.parent/Path(name[4:]))
+                    else:
+                        # Accept both the current PyInstaller _internal layout and legacy
+                        # root-level installs. The updater itself writes to module_root.
+                        candidates=(module_root/name, ROOT/name, app_root/name, app_root/'_internal'/name)
+                    if not any(path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest()==digest for path in dict.fromkeys(candidates)):
+                        mismatches.append(name)
                 available=bool(mismatches)
                 detail=('Files to update: '+', '.join(mismatches)) if available else 'All installed files match the latest desktop bundle.'
                 if available and manifest['version']==engine.VERSION:
