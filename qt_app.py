@@ -2369,6 +2369,10 @@ class Desktop(QMainWindow):
         self.monitor_worker=threading.Thread(target=self.monitor,daemon=True);self.monitor_worker.start()
         self.timer=QTimer(self);self.timer.timeout.connect(self.tick);self.timer.start(100)
         if start_supervisor and not self.exe.is_file():QTimer.singleShot(0,self.choose)
+        accounts_menu=self.menuBar().addMenu('Accounts')
+        remove_account_action=QAction('Remove Account…',self);remove_account_action.triggered.connect(self.remove_account);accounts_menu.addAction(remove_account_action)
+        edit_account_action=QAction('Edit Account…',self);edit_account_action.triggered.connect(self.edit_account);accounts_menu.addAction(edit_account_action)
+        add_account_action=QAction('Add Accounts…',self);add_account_action.triggered.connect(self.add_accounts);accounts_menu.addAction(add_account_action)
         menu=self.menuBar().addMenu('Application')
         shortcut=QAction('Create Desktop Shortcut',self);shortcut.triggered.connect(self.shortcut);menu.addAction(shortcut)
 
