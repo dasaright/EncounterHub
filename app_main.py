@@ -201,6 +201,8 @@ def advance_stop(session):
         session['stop_phase']='clients'
     if process.members():
         return 'Bot exited; closing owned game clients...',False
+    if hasattr(process,'release'):process.release()
+    else:process.close()
     session.update(stopping=False,phase='stopped',pending=None)
     return 'Stopped (bot and owned clients)',True
 
@@ -700,7 +702,7 @@ class Hub:
             if finished:
                 self.report(name,'games','—')
                 if s.pop('auto_restart',False):
-                    s['process'].close();s['stopping']=False;s['stop_phase']=None;s['auto_restart_at']=time.monotonic()+15
+                    s['stopping']=False;s['stop_phase']=None;s['auto_restart_at']=time.monotonic()+15
                     self.report(name,'status','Bot and owned clients stopped; waiting 15 seconds before relaunch')
                 else:self.report(name,'command','Bot and owned clients stopped')
             return
