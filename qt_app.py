@@ -2376,7 +2376,7 @@ class Desktop(QMainWindow):
         self.resizing_columns=False
         saved=self.settings.get('column_widths',{})
         self.custom_columns=bool(saved)
-        defaults=(60,120,200,125,210,245,150,140,82,82,82,82,82,105,155,145,125)
+        defaults=(60,120,200,125,210,245,150,140,82,82,82,82,82,105,155,145,125,110,75)
         self.resizing_columns=True
         for index,key in enumerate(COLUMNS):
             width=saved.get(key,defaults[index]) if isinstance(saved,dict) else defaults[index]
