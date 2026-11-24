@@ -406,6 +406,18 @@ class Accounts(unittest.TestCase):
             validate_new_account_emails([{'email':'seven@example.com'},{'email':' SEVEN@example.com '}],existing)
         validate_new_account_emails([{'email':'seven@example.com'},{'email':'eight@example.com'}],existing)
 
+    def test_new_accounts_append_after_existing_account_order(self):
+        from qt_app import append_account_order,account_key
+        existing={'Alpha':{'email':'a@example.com'},'Bravo':{'email':'b@example.com'}}
+        records=[{'character':'Charlie','email':'c@example.com'},
+                 {'character':'Delta','email':'d@example.com'}]
+        order=append_account_order([],existing,records)
+        self.assertEqual(order,[account_key('a@example.com','Alpha'),
+                                account_key('b@example.com','Bravo'),
+                                account_key('c@example.com','Charlie'),
+                                account_key('d@example.com','Delta')])
+        self.assertEqual(append_account_order(order,existing,records),order)
+
     def test_dpapi_password_round_trip_preserves_unicode_and_special_characters(self):
         if sys.platform!='win32':self.skipTest('Windows DPAPI required')
         import ctypes
