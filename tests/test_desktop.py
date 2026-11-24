@@ -270,11 +270,15 @@ class QtDesktop(unittest.TestCase):
         folder=Path(self.temp.name)
         (folder/'Config'/'characters.ini').write_text('[Alpha]\nEmail = a@example.com\n[Bravo]\nEmail = b@example.com\n[Charlie]\nEmail = c@example.com\n[Ranger B]\nEmail = b@example.com\n')
         a,b,c=(account_key(e+'@example.com','') for e in 'abc')
-        (folder/'EncounterHub'/'settings.json').write_text(_json.dumps({'bot_path':str(folder/'Encounter_ReBuilt.exe'),'account_order':[c,b]}))
+        (folder/'EncounterHub'/'settings.json').write_text(_json.dumps({
+            'bot_path':str(folder/'Encounter_ReBuilt.exe'),'account_order':[c,b],
+            'accounts':{c:{'label':'Account 6'},b:{'label':'Account 6'},a:{'label':'Account 8'}}}))
         with patch.dict(os.environ,{'LOCALAPPDATA':str(folder)}):window=Desktop('test',start_supervisor=False)
         try:
             self.assertEqual(list(window.rows),[c,b,a])
             self.assertEqual([window.rows[k] for k in (c,b,a)],[0,1,2])
+            self.assertEqual([window.account_label(k) for k in (c,b,a)],
+                             ['Account 1','Account 2','Account 3'])
             self.assertEqual(window.account_characters[b],['Bravo','Ranger B'])
             self.assertEqual(window.character_table.item(0,0).text(),'Charlie')
         finally:
