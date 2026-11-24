@@ -2716,7 +2716,7 @@ class Desktop(QMainWindow):
             # Leave any user-customized labels untouched.
             expected_label='Account '+str(index+1)
             current_label=record.get('label','')
-            if not current_label or re.fullmatch(r'Account \\d+',current_label):
+            if not current_label or re.fullmatch(r'Account \d+',current_label):
                 if current_label!=expected_label:record['label']=expected_label;changed=True
             # Characters chosen for a profession farm in 2.3.0 get that profession in the Character Manager.
             roster=self.settings.setdefault('characters',{})

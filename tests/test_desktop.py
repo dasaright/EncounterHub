@@ -180,7 +180,9 @@ class QtDesktop(unittest.TestCase):
         self.assertEqual(w.account_record(key)['characters']['Ministerial'],'Second Character')
         w.row_widgets[key]['farm'].setCurrentText('Fiber')
         self.assertFalse(character.isEnabled())
-        self.assertEqual(w.row_character(key),'')
+        # The account's Ranger remains the selected Fiber character even though
+        # the Character control is locked while a profession-specific farm is active.
+        self.assertEqual(w.row_character(key),'Second Character')
         w.row_widgets[key]['farm'].setCurrentText('Vaettir')
         self.assertFalse(character.isEnabled())
 
