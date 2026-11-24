@@ -13,7 +13,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-VERSION = "2.3.0"
+VERSION = "2.3.2"
 
 
 def command_action(command, buttons):
@@ -110,6 +110,12 @@ def update_bundle(root=None, commit=None):
             target=destinations[name];target.parent.mkdir(parents=True,exist_ok=True)
             if previous[name] is not None and not name.startswith('bot/'):(target.with_name(target.name+'.backup')).write_bytes(previous[name])
             temporary=target.with_name(target.name+'.download');temporary.write_bytes(payload);os.replace(temporary,target);installed.append(name)
+        # A successful update means every downloaded file is now present byte-for-byte.
+        # If verification fails, the exception path below restores the prior installation.
+        for name,payload in payloads.items():
+            target=destinations[name]
+            if not target.is_file() or target.read_bytes()!=payload:
+                raise IOError('Installed update verification failed: '+name)
     except Exception:
         for name in reversed(installed):
             target=destinations[name]
