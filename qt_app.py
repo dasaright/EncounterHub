@@ -2007,6 +2007,22 @@ def group_accounts(sections):
     return list(groups.items())
 
 
+def validate_new_account_emails(records, existing_sections):
+    """Bulk Add Accounts creates one login per row; prevent accidental account grouping."""
+    existing={values.get('email','').strip().casefold() for values in existing_sections.values()
+              if values.get('email','').strip()}
+    pending=set()
+    for record in records:
+        email=record.get('email','').strip().casefold()
+        if email in existing:
+            raise ValueError(f"{record.get('email','').strip()} is already used by an existing account. "
+                             "Use Character Manager to add another character to that login.")
+        if email in pending:
+            raise ValueError(f"{record.get('email','').strip()} is entered more than once. "
+                             "Each Add Accounts row must use a different Guild Wars login.")
+        pending.add(email)
+
+
 def remove_character_section(path,name):
     """Delete [name] and its lines from characters.ini, keeping the encoding."""
     text,encoding=read_ini_text(path)
@@ -2386,6 +2402,8 @@ class Desktop(QMainWindow):
         try:
             # Validate the whole batch before writing any new sections.
             known={name.casefold() for names in self.account_characters.values() for name in names}
+            existing_sections=parse_characters(read_ini_text(self.characters_ini())[0]) if self.characters_ini().exists() else {}
+            validate_new_account_emails(records,existing_sections)
             pending=set()
             for record in records:
                 name=record['character']
