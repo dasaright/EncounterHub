@@ -2167,6 +2167,36 @@ class TableAdapter:
         if not item:item=QTableWidgetItem();self.desktop.table.setItem(row,index,item)
         item.setText(str(value));return str(value)
 
+class EditAccountDialog(QDialog):
+    """Edit the shared Guild Wars login used by every character on one account."""
+    def __init__(self,parent,accounts):
+        super().__init__(parent)
+        self.setWindowTitle('Edit Account');self.resize(620,300)
+        layout=QVBoxLayout(self);form=QFormLayout();layout.addLayout(form)
+        self.account=QComboBox()
+        for key,names in accounts.items():self.account.addItem(parent.account_label(key)+' — '+', '.join(names),key)
+        form.addRow('Account',self.account)
+        self.exe=QLineEdit();browse=QPushButton('Browse…');row=QWidget();line=QHBoxLayout(row);line.setContentsMargins(0,0,0,0);line.addWidget(self.exe);line.addWidget(browse)
+        browse.clicked.connect(self.browse_executable);form.addRow('Guild Wars Executable',row)
+        self.email=QLineEdit();form.addRow('Email',self.email)
+        self.password=QLineEdit();self.password.setEchoMode(QLineEdit.EchoMode.Password);self.password.setPlaceholderText('Leave blank to keep the current password');form.addRow('New Password',self.password)
+        layout.addWidget(QLabel('Changes apply to every character sharing this account login. Gw.dat must be beside Gw.exe.'))
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept);buttons.rejected.connect(self.reject);layout.addWidget(buttons)
+        self.account.currentIndexChanged.connect(self.load_account);self.load_account()
+    def browse_executable(self):
+        path=QFileDialog.getOpenFileName(self,'Guild Wars Executable','','Guild Wars (Gw.exe);;Executables (*.exe)')[0]
+        if path:self.exe.setText(path)
+    def load_account(self):
+        key=self.account.currentData()
+        if not key:return
+        names=self.parent().account_characters.get(key,[])
+        try:sections=parse_characters(read_ini_text(self.parent().characters_ini())[0]);record=sections[names[0]]
+        except (OSError,KeyError,IndexError):return
+        self.exe.setText(record.get('filepath',''));self.email.setText(record.get('email',''));self.password.clear()
+    def values(self):return {'key':self.account.currentData(),'gw_exe':self.exe.text().strip(),'email':self.email.text().strip(),'password':self.password.text()}
+
+
 class AddAccountsDialog(QDialog):
     """SkeleHub-style bulk account setup: add 1-10 Guild Wars logins in one pass."""
     def __init__(self,parent=None):
@@ -2266,7 +2296,7 @@ class Desktop(QMainWindow):
         self.check_button=QPushButton('Check for Updates');self.check_button.clicked.connect(self.check_update);updates.addWidget(self.check_button)
         self.update_button=QPushButton('Update Now');self.update_button.setProperty('primary',True);self.update_button.setEnabled(False);self.update_button.clicked.connect(self.update_now);updates.addWidget(self.update_button)
         toolbar=QHBoxLayout();outer.addLayout(toolbar)
-        for text,callback in [('Choose Bot...',self.choose),('Add Accounts',self.add_accounts),('Select All',lambda:self.select_all(True)),('Clear Selection',lambda:self.select_all(False))]:
+        for text,callback in [('Choose Bot...',self.choose),('Add Accounts',self.add_accounts),('Edit Account',self.edit_account),('Select All',lambda:self.select_all(True)),('Clear Selection',lambda:self.select_all(False))]:
             button=QPushButton(text);button.clicked.connect(callback);toolbar.addWidget(button)
         self.supply_button=QPushButton('Supply Manager');self.supply_button.clicked.connect(self.open_supply_manager);toolbar.addWidget(self.supply_button)
         self.farm_options_button=QPushButton('Farm Options');self.farm_options_button.clicked.connect(self.open_farm_options);toolbar.addWidget(self.farm_options_button)
@@ -2332,6 +2362,53 @@ class Desktop(QMainWindow):
             QtDialogs.showerror('Could not add accounts',str(exc));return
         self.load_names();self.save()
         self.notice.setText(f'Added {len(records)} account character(s). Configure each farm and profession in the hub.')
+    def edit_account(self):
+        if not self.account_characters:return
+        dialog=EditAccountDialog(self,self.account_characters)
+        if dialog.exec()!=QDialog.DialogCode.Accepted:return
+        values=dialog.values();key=values['key']
+        if not key:return
+        if self.account_busy(key):
+            QtDialogs.showinfo('Edit Account','Stop this account session before editing its login details.');return
+        exe=Path(values['gw_exe']);email=values['email']
+        try:
+            if not exe.is_absolute() or exe.name.casefold()!='gw.exe':raise ValueError('Select a valid absolute path to Gw.exe.')
+            if not exe.is_file() or not exe.with_name('Gw.dat').is_file():raise ValueError(f'Gw.exe and Gw.dat must both exist in {exe.parent}.')
+            if not email:raise ValueError('Enter the account email.')
+            names=self.account_characters[key]
+            new_key=account_key(email,names[0])
+            if new_key!=key and new_key in self.account_characters:raise ValueError('Another account already uses this email address.')
+            protected=protect_account_password(values['password']) if values['password'] else None
+            self.update_account_login(names,email,str(exe),protected)
+            if new_key!=key:
+                accounts=self.settings.setdefault('accounts',{});accounts[new_key]=accounts.pop(key,{})
+                self.settings['account_order']=[new_key if item==key else item for item in self.settings.get('account_order',[])]
+                profiles=self.settings.setdefault('account_supply_profiles',{})
+                if key in profiles:profiles[new_key]=profiles.pop(key)
+                if key in self.checked:self.checked.remove(key);self.checked.add(new_key)
+            self.load_names();self.save()
+            self.notice.setText(f'Updated account login for {len(names)} character(s).')
+        except (OSError,ValueError) as exc:QtDialogs.showerror('Could not edit account',str(exc))
+
+    def update_account_login(self,names,email,exe,password):
+        path=self.characters_ini();text,encoding=read_ini_text(path);lines=text.splitlines(keepends=True)
+        selected=set(names);current=None;out=[]
+        present=set()
+        for line in lines:
+            header=INI_HEADER.match(line.rstrip('\\r\\n'))
+            if header:
+                current=header.group(1)
+                if current in selected:present.add(current)
+            if current in selected and '=' in line and not line.lstrip().startswith((';','#')):
+                key=line.split('=',1)[0].strip().lower()
+                newline='\\r\\n' if line.endswith('\\r\\n') else ('\\n' if line.endswith('\\n') else '')
+                if key=='email':line='Email='+email+newline
+                elif key=='filepath':line='FilePath='+exe+newline
+                elif key=='pwd' and password is not None:line='Pwd='+password+newline
+            out.append(line)
+        if present!=selected:raise ValueError('One or more characters could not be found in characters.ini.')
+        temporary=Path(str(path)+'.tmp');temporary.write_bytes(''.join(out).encode(encoding));os.replace(temporary,path)
+
     def write_new_accounts(self,records):
         import configparser,io
         path=self.characters_ini();text,encoding=read_ini_text(path) if path.exists() else ('','utf-16')
