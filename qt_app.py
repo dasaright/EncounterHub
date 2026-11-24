@@ -1898,8 +1898,8 @@ End Sub
     except (OSError,subprocess.TimeoutExpired):pass
 
 
-COLUMNS=('check','account','character','farm','status','command','render','ontop','pause','resume','trade','stop','launch','buycons','automatic','manual','storage')
-CAPTIONS=('Select','Account','Character','Farm','Bot Status','Command','Disable Rendering','Always on Top','Pause','Resume','Trade','Stop','Launch','Buy Cons','Automatically Craft','Manually Craft','Put in Storage')
+COLUMNS=('check','account','character','farm','status','command','render','ontop','pause','resume','trade','stop','launch','buycons','automatic','manual','storage','total_pie','pie_hr')
+CAPTIONS=('Select','Account','Character','Farm','Bot Status','Command','Disable Rendering','Always on Top','Pause','Resume','Trade','Stop','Launch','Buy Cons','Automatically Craft','Manually Craft','Put in Storage','Total Pie','Pie/hr')
 FLEXIBLE=('character','status','command')
 # Farm routines the bot can run. The bot reads each character's farm from Config\farms.ini.
 FARMS=('Ministerial','Fiber','Vaettir')
@@ -2921,7 +2921,7 @@ class Desktop(QMainWindow):
     def add_row(self,name):
         if name in self.rows:return
         row=self.table.rowCount();self.table.insertRow(row);self.rows[name]=row
-        self.tree.set(name,'status','Ready');self.tree.set(name,'storage','—')
+        self.tree.set(name,'status','Ready');self.tree.set(name,'storage','—');self.tree.set(name,'total_pie','—');self.tree.set(name,'pie_hr','—')
         record=self.account_record(name)
         widgets={}
         account=QLineEdit(record.get('label') or name);account.setFrame(False);account.setToolTip('Account name (click to rename)')
@@ -2985,6 +2985,13 @@ class Desktop(QMainWindow):
     def session(self,process,phase='select',character=None):
         return dict(process=process,phase=phase,character=character,deadline=time.monotonic()+90,pending=None,command_deadline=0,sent_at=0,window=None,controls=None,next_games=0,stopping=False,stop_phase=None,options={},option_requests={},next_options=0,minimize_on_start=phase=='select',minimized=False)
 
+    def auto_restart_session(self,name,s):
+        character=s.get('character') or self.session_character(name)
+        record=self.broker.call('launch',exe=str(self.exe.resolve()),character=character)
+        fresh=self.session(RemoteProcess(self.broker,record['identifier'],record['pid']),'select',character)
+        s.clear();s.update(fresh)
+        self.tree.set(name,'pid',record['pid']);self.tree.set(name,'command','');self.update_buycons_button(name)
+
     def reconnect(self):
         for record in self.broker.call('snapshot'):
             if not record['active'] or os.path.normcase(record['exe'])!=os.path.normcase(str(self.exe.resolve())):continue
@@ -3019,7 +3026,7 @@ class Desktop(QMainWindow):
                 record=self.broker.call('launch',exe=str(self.exe.resolve()),character=character)
                 self.sessions[name]=self.session(RemoteProcess(self.broker,record['identifier'],record['pid']),'select',character)
                 self.update_buycons_button(name)
-                self.tree.set(name,'status','Opening bot...');self.tree.set(name,'storage','—');self.tree.set(name,'command','');self.tree.set(name,'pid',record['pid'])
+                self.tree.set(name,'status','Opening bot...');self.tree.set(name,'storage','—');self.tree.set(name,'total_pie','—');self.tree.set(name,'pie_hr','—');self.tree.set(name,'command','');self.tree.set(name,'pid',record['pid'])
             except OSError as exc:self.tree.set(name,'status',str(exc))
 
     def stop(self,names=None):
