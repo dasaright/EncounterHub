@@ -684,7 +684,7 @@ class Hub:
             if not control or not self.native.u.IsWindow(control):control=pie_counter_control(self.native,children,caption);s[key+'_control']=control
             if control:
                 value=self.native.text(control).strip().replace(',','')
-                if re.fullmatch(r'-?\\d+(?:\\.\\d+)?',value):self.report(name,key,value)
+                if re.fullmatch(r'-?\d+(?:\.\d+)?',value):self.report(name,key,value)
 
     def step(self,name,s):
         # Rows may be accounts; the bot window and its character list use the session's character.
