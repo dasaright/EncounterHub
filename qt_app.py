@@ -27,7 +27,7 @@ _TEXT_BUNDLE_SUFFIXES = {'.py', '.au3', '.vbs', '.cmd', '.txt', '.json'}
 def bundle_digest(data, name):
     """Hash text files independent of Windows CRLF vs GitHub LF checkouts."""
     if Path(name).suffix.lower() in _TEXT_BUNDLE_SUFFIXES:
-        data = data.replace(b'\\r\\n', b'\\n').replace(b'\\r', b'\\n')
+        data = data.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
     return hashlib.sha256(data).hexdigest()
 
 # TacoBot's exact current desktop stylesheet, committed in this repo.
@@ -2462,8 +2462,8 @@ class Desktop(QMainWindow):
             QtDialogs.showinfo('Remove Account','Stop this account session before removing the account.');return
         label=self.account_label(key)
         if not QtDialogs.askyesno('Remove Account',
-            'Permanently remove '+label+' and all '+str(len(names))+' character(s)?\\n\\n'+
-            ', '.join(names)+'\\n\\nThis removes their characters.ini entries and saved Encounter Hub account/character settings.'):
+            'Permanently remove '+label+' and all '+str(len(names))+' character(s)?\n\n'+
+            ', '.join(names)+'\n\nThis removes their characters.ini entries and saved Encounter Hub account/character settings.'):
             return
         try:remove_character_sections(self.characters_ini(),names)
         except (OSError,ValueError) as exc:
@@ -2509,13 +2509,13 @@ class Desktop(QMainWindow):
         selected=set(names);current=None;out=[]
         present=set()
         for line in lines:
-            header=INI_HEADER.match(line.rstrip('\\r\\n'))
+            header=INI_HEADER.match(line.rstrip('\r\n'))
             if header:
                 current=header.group(1)
                 if current in selected:present.add(current)
             if current in selected and '=' in line and not line.lstrip().startswith((';','#')):
                 key=line.split('=',1)[0].strip().lower()
-                newline='\\r\\n' if line.endswith('\\r\\n') else ('\\n' if line.endswith('\\n') else '')
+                newline='\r\n' if line.endswith('\r\n') else ('\n' if line.endswith('\n') else '')
                 if key=='email':line='Email='+email+newline
                 elif key=='filepath':line='FilePath='+exe+newline
                 elif key=='pwd' and password is not None:line='Pwd='+password+newline
