@@ -363,6 +363,16 @@ class QtDesktop(unittest.TestCase):
         with patch('qt_app.subprocess.Popen') as spawn:w.restart()
         spawn.assert_called_once();w.broker.call.assert_not_called();self.assertTrue(w.restarting)
 
+
+
+class BundleHashing(unittest.TestCase):
+    def test_text_bundle_hash_ignores_windows_line_endings(self):
+        from qt_app import bundle_digest
+        lf=b'line one\\nline two\\n'
+        crlf=b'line one\\r\\nline two\\r\\n'
+        self.assertEqual(bundle_digest(lf,'qt_app.py'),bundle_digest(crlf,'qt_app.py'))
+        self.assertNotEqual(bundle_digest(lf,'image.png'),bundle_digest(crlf,'image.png'))
+
 if __name__=='__main__':unittest.main()
 
 @unittest.skipUnless(sys.platform=='win32','Windows supervisor integration')

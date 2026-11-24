@@ -2,6 +2,7 @@
 import ctypes
 import base64
 import json
+import hashlib
 import os
 from pathlib import Path
 import queue
@@ -18,6 +19,16 @@ from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBo
 import app_main as engine
 from supervisor import ensure, RemoteProcess, command_line
 from supply_manager import SupplyDialog, normalize_config, PROFILES, MARKET_FILE, read_market_prices, apply_market_prices
+
+
+
+_TEXT_BUNDLE_SUFFIXES = {'.py', '.au3', '.vbs', '.cmd', '.txt', '.json'}
+
+def bundle_digest(data, name):
+    """Hash text files independent of Windows CRLF vs GitHub LF checkouts."""
+    if Path(name).suffix.lower() in _TEXT_BUNDLE_SUFFIXES:
+        data = data.replace(b'\\r\\n', b'\\n').replace(b'\\r', b'\\n')
+    return hashlib.sha256(data).hexdigest()
 
 # TacoBot's exact current desktop stylesheet, committed in this repo.
 try:
@@ -3132,7 +3143,7 @@ class Desktop(QMainWindow):
                         # Accept both the current PyInstaller _internal layout and legacy
                         # root-level installs. The updater itself writes to module_root.
                         candidates=(module_root/name, ROOT/name, app_root/name, app_root/'_internal'/name)
-                    if not any(path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest()==digest for path in dict.fromkeys(candidates)):
+                    if not any(path.is_file() and bundle_digest(path.read_bytes(),name)==digest for path in dict.fromkeys(candidates)):
                         mismatches.append(name)
                 available=bool(mismatches)
                 detail=('Files to update: '+', '.join(mismatches)) if available else 'All installed files match the latest desktop bundle.'

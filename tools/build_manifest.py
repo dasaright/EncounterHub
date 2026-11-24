@@ -6,7 +6,13 @@ root=Path(__file__).resolve().parents[1]
 source=(root/'app_main.py').read_bytes()
 module=ast.parse(source)
 version=next(ast.literal_eval(n.value) for n in module.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='VERSION' for t in n.targets))
-def digest(path):return hashlib.sha256((root/path).read_bytes()).hexdigest()
+TEXT_SUFFIXES={'.py','.au3','.vbs','.cmd','.txt','.json'}
+def digest(path):
+ data=(root/path).read_bytes()
+ # Windows checkout/build may materialize CRLF while updater downloads GitHub's LF bytes.
+ # Canonicalize text before hashing so installed files never remain perpetually outdated.
+ if Path(path).suffix.lower() in TEXT_SUFFIXES:data=data.replace(b'\\r\\n',b'\\n').replace(b'\\r',b'\\n')
+ return hashlib.sha256(data).hexdigest()
 (root/'update.json').write_text(json.dumps({'format':1,'version':version,'files':{'app_main.py':digest('app_main.py')}},indent=2)+'\n')
 legacy=['app_main.py','hub.py','Launch Hub.vbs','Launch Hub.cmd','update.json']
 (root/'bundle.json').write_text(json.dumps({'format':1,'version':version,'files':{p:digest(p) for p in legacy}},indent=2)+'\n')
