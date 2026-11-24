@@ -74,7 +74,7 @@ jobs:
           New-Item -ItemType Directory -Force "dist/EncounterHub/Encounter ReBuilt" | Out-Null
           New-Item -ItemType Directory -Force "dist/EncounterHub/_internal" | Out-Null
           Copy-Item -Path "Encounter ReBuilt - PUBLIC/*" -Destination "dist/EncounterHub/Encounter ReBuilt" -Recurse -Force
-          Copy-Item app_main.py,hub.py,qt_app.py,qt_style.py,supervisor.py,supply_manager.py,update.json,bundle.json,desktop-bundle.json,requirements.txt,taco.ico -Destination "dist/EncounterHub/_internal" -Force
+          Copy-Item app_main.py,hub.py,qt_app.py,qt_style.py,supervisor.py,supply_manager.py,update.json,bundle.json,desktop-bundle.json,requirements.txt,taco.ico,"Launch Hub.vbs","Launch Hub.cmd" -Destination "dist/EncounterHub/_internal" -Force
           Compress-Archive -Path "dist/EncounterHub" -DestinationPath "EncounterHub-Windows.zip" -Force
           $hash = (Get-FileHash "EncounterHub-Windows.zip" -Algorithm SHA256).Hash.ToLower()
           "$hash  EncounterHub-Windows.zip" | Set-Content -NoNewline "EncounterHub-Windows.zip.sha256"
