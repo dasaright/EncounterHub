@@ -58,6 +58,7 @@ class RemoteProcess:
     def members(self):return self.broker.call('members',identifier=self.identifier)
     def games(self):return self.broker.call('games',identifier=self.identifier)
     def close(self):pass  # Lifetime belongs to the supervisor, not a GUI handle.
+    def release(self):return self.broker.call('release',identifier=self.identifier)
 
 
 def serve(endpoint_path=ENDPOINT):
@@ -89,6 +90,10 @@ def serve(endpoint_path=ENDPOINT):
                     elif op=='exit':
                         if any(v['process'].members() for v in jobs.values()):raise ValueError('Owned sessions still active')
                         running=False
+                    elif op=='release':
+                        record=jobs[request['identifier']]
+                        if record['process'].members():raise ValueError('Cannot release a session with active owned processes')
+                        record['process'].close();del jobs[request['identifier']];result=True
                     elif op in ('poll','stopbot','shutdown','members','games'):
                         process=jobs[request['identifier']]['process']
                         result={'poll':process.poll,'stopbot':process.terminate,'shutdown':process.shutdown,'members':process.members,'games':process.games}[op]()
