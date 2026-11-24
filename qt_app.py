@@ -2414,6 +2414,15 @@ class Desktop(QMainWindow):
                 if not exe.is_file() or not exe.with_name('Gw.dat').is_file():raise ValueError(f'Gw.exe and Gw.dat must both exist in {exe.parent}.')
                 if not record['email']:raise ValueError(f'Enter the account email for {name}.')
                 if not record['password']:raise ValueError(f'Enter the account password for {name}.')
+            # Preserve the current account order, then append newly added logins in
+            # the order entered. Without this, alphabetical character sorting can
+            # insert a new account between existing rows and reuse an old label.
+            account_order=self.settings.setdefault('account_order',[])
+            for key,_names in group_accounts(existing_sections):
+                if key not in account_order:account_order.append(key)
+            for record in records:
+                key=account_key(record['email'],record['character'])
+                if key not in account_order:account_order.append(key)
             # Protect every password before mutating characters.ini.
             for record in records:record['protected_password']=protect_account_password(record['password'])
             self.write_new_accounts(records)
@@ -2694,7 +2703,13 @@ class Desktop(QMainWindow):
         changed=False
         for index,(key,names) in enumerate(groups):
             record=self.account_record(key)
-            if not record.get('label'):record['label']='Account '+str(index+1);changed=True
+            # Default labels are positional, so repair duplicates/gaps left by
+            # older versions after account insertion changed alphabetical order.
+            # Leave any user-customized labels untouched.
+            expected_label='Account '+str(index+1)
+            current_label=record.get('label','')
+            if not current_label or re.fullmatch(r'Account \\d+',current_label):
+                if current_label!=expected_label:record['label']=expected_label;changed=True
             # Characters chosen for a profession farm in 2.3.0 get that profession in the Character Manager.
             roster=self.settings.setdefault('characters',{})
             for farm,character in list(record['characters'].items()):
