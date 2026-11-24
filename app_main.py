@@ -201,8 +201,8 @@ def advance_stop(session):
         session['stop_phase']='clients'
     if process.members():
         return 'Bot exited; closing owned game clients...',False
-    if hasattr(process,'release'):process.release()
-    else:process.close()
+    if session.get('auto_restart') and hasattr(process,'release'):process.release()
+    elif not hasattr(process,'release'):process.close()
     session.update(stopping=False,phase='stopped',pending=None)
     return 'Stopped (bot and owned clients)',True
 
