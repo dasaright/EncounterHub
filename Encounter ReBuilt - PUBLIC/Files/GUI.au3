@@ -954,9 +954,12 @@ EndFunc
 Func PieStats_Update()
     If $g_h_PieSessionTimer = 0 Then Return
     Local $l_i_Inventory = AddOns_GetInventoryItemCountbyModelID($GC_I_MODELID_PUMPKIN_PIE)
+    ; Count net inventory gained since this session began, never a negative amount.
+    Local $l_i_PiesEarned = $l_i_Inventory - $g_i_PieInventoryStart
+    If $l_i_PiesEarned < 0 Then $l_i_PiesEarned = 0
     Local $l_f_Hours = TimerDiff($g_h_PieSessionTimer) / 3600000
     Local $l_f_PiesPerHour = 0
-    If $l_f_Hours > 0 Then $l_f_PiesPerHour = Round(($l_i_Inventory - $g_i_PieInventoryStart) / $l_f_Hours, 1)
+    If $l_f_Hours > 0 Then $l_f_PiesPerHour = Round($l_i_PiesEarned / $l_f_Hours, 1)
     GUICtrlSetData($g_i_CtrlID_Label_TotalPie, $g_i_PieBankCount + $l_i_Inventory)
     GUICtrlSetData($g_i_CtrlID_Label_PiePerHour, $l_f_PiesPerHour)
     Local $l_s_Character = GUI_StripCharacterEnum(GUICtrlRead($g_i_CtrlID_Combo_CharInput))
