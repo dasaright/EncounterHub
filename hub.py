@@ -8,9 +8,11 @@ from pathlib import Path
 import subprocess
 import sys
 import ssl
+import time
 import certifi
 import urllib.request
 import urllib.parse
+import urllib.error
 
 HUB_BUNDLE_SUPPORT = True
 
@@ -51,11 +53,22 @@ def prefer_updated_modules(root=None):
     return finder
 
 
+def _read_url(req, timeout, attempts=3, limit=None):
+    """Read a GitHub response with bounded retries for transient network timeouts."""
+    for attempt in range(attempts):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout, context=https_context()) as response:
+                return response.read() if limit is None else response.read(limit)
+        except (TimeoutError, urllib.error.URLError, ConnectionError):
+            if attempt + 1 >= attempts:
+                raise
+            time.sleep(1.5 * (attempt + 1))
+
+
 def api(path):
     req = urllib.request.Request('https://api.github.com/repos/' + REPOSITORY + '/' + path,
                                  headers={'User-Agent': 'EncounterHub', 'Accept': 'application/vnd.github+json'})
-    with urllib.request.urlopen(req, timeout=8, context=https_context()) as response:
-        return json.loads(response.read(2_000_000))
+    return json.loads(_read_url(req, timeout=20, attempts=3, limit=2_000_000))
 
 
 def remote_file(path, commit):
@@ -65,8 +78,7 @@ def remote_file(path, commit):
     path=urllib.parse.unquote(path)
     raw='https://raw.githubusercontent.com/'+REPOSITORY+'/'+commit+'/'+urllib.parse.quote(path,safe='/')
     req=urllib.request.Request(raw,headers={'User-Agent':'EncounterHub'})
-    with urllib.request.urlopen(req,timeout=120,context=https_context()) as response:
-        return response.read()
+    return _read_url(req, timeout=120, attempts=2)
 
 
 def validate_manifest(manifest):

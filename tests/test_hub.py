@@ -40,6 +40,12 @@ class Updates(unittest.TestCase):
         self.assertEqual(context.verify_mode,ssl.CERT_REQUIRED)
         self.assertTrue(context.check_hostname)
         self.assertGreater(context.cert_store_stats()['x509_ca'],0)
+    def test_api_retries_transient_read_timeout(self):
+        response=MagicMock();response.__enter__.return_value=response;response.read.return_value=b'{}'
+        with patch.object(hub.urllib.request,'urlopen',side_effect=[TimeoutError('read timed out'),response]) as urlopen, patch.object(hub.time,'sleep'):
+            self.assertEqual(hub.api('rate_limit'),{})
+        self.assertEqual(urlopen.call_count,2)
+        self.assertEqual(urlopen.call_args.kwargs['timeout'],20)
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
         self.addCleanup(self.temp.cleanup)
