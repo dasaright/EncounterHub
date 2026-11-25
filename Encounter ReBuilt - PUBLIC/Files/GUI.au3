@@ -85,7 +85,7 @@ Global $g_f_FastestRuntimeSeconds = 0x7FFFFFFF, $g_i_FastestRuntimeMinutes = 0, 
 Global $g_i_Count_MikuFails = 0, $g_i_Count_SpikedFoes = 0, $g_i_Count_AvgSpikedFoes = 0
 Global $g_i_Count_MinisterialCommendation = 0, $g_i_Count_MinisterialCommendationLooted = 0
 Global $g_i_Count_GoldItem = 0, $g_i_Count_StoredGoldItem = 0, $g_i_Count_Lockpick = 0, $g_i_Count_BlackDye = 0
-Global $g_i_PieBankCount = 0, $g_i_PieInventoryStart = 0, $g_h_PieSessionTimer = 0
+Global $g_i_PieBankCount = 0, $g_i_PieInventoryStart = 0, $g_i_PieInventoryLast = 0, $g_i_PieSessionGained = 0, $g_h_PieSessionTimer = 0
 ; ===============================================================================================================================
 
 ; #GLOBALS - CHARACTER DIALOG# ==================================================================================================
@@ -945,6 +945,8 @@ Func PieStats_Start()
     Local $l_s_Character = GUI_StripCharacterEnum(GUICtrlRead($g_i_CtrlID_Combo_CharInput))
     $g_i_PieBankCount = AddOns_GetStorageItemCountbyModelID($GC_I_MODELID_PUMPKIN_PIE)
     $g_i_PieInventoryStart = AddOns_GetInventoryItemCountbyModelID($GC_I_MODELID_PUMPKIN_PIE)
+    $g_i_PieInventoryLast = $g_i_PieInventoryStart
+    $g_i_PieSessionGained = 0
     $g_h_PieSessionTimer = TimerInit()
     IniWrite(@ScriptDir & "\Config\pie_stats.ini", $l_s_Character, "Banked", $g_i_PieBankCount)
     IniWrite(@ScriptDir & "\Config\pie_stats.ini", $l_s_Character, "InventoryStart", $g_i_PieInventoryStart)
@@ -954,9 +956,14 @@ EndFunc
 Func PieStats_Update()
     If $g_h_PieSessionTimer = 0 Then Return
     Local $l_i_Inventory = AddOns_GetInventoryItemCountbyModelID($GC_I_MODELID_PUMPKIN_PIE)
+    ; Count only inventory increases during this session. Spending/using pies must never
+    ; subtract from earned pies or produce a negative Pie/hr value.
+    If $l_i_Inventory > $g_i_PieInventoryLast Then _
+            $g_i_PieSessionGained += $l_i_Inventory - $g_i_PieInventoryLast
+    $g_i_PieInventoryLast = $l_i_Inventory
     Local $l_f_Hours = TimerDiff($g_h_PieSessionTimer) / 3600000
     Local $l_f_PiesPerHour = 0
-    If $l_f_Hours > 0 Then $l_f_PiesPerHour = Round(($l_i_Inventory - $g_i_PieInventoryStart) / $l_f_Hours, 1)
+    If $l_f_Hours > 0 Then $l_f_PiesPerHour = Round($g_i_PieSessionGained / $l_f_Hours, 1)
     GUICtrlSetData($g_i_CtrlID_Label_TotalPie, $g_i_PieBankCount + $l_i_Inventory)
     GUICtrlSetData($g_i_CtrlID_Label_PiePerHour, $l_f_PiesPerHour)
     Local $l_s_Character = GUI_StripCharacterEnum(GUICtrlRead($g_i_CtrlID_Combo_CharInput))
